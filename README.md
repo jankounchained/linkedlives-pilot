@@ -14,7 +14,7 @@ Task 2: design and implement a simple method to link the 1846 and 1850 Danish We
   - `review_leaders.parquet`: a helper list used to refresh the category lookup.
 
   The records file holds whole census records, so this folder is never committed and travels only inside the hand-in zip.
-- `task1_handicaps/outputs/handicaps_mapping.parquet`: the full mapping ("File A"), one row per distinct raw value with its counts per census, proposed standard, confidence and category.
+- `task1_handicaps/outputs/handicaps_mapping.parquet`: the full mapping ("File A"), one row per distinct `handicaps` value (after trivial normalisation) with its counts per census, proposed standard, confidence and category.
 - [`QUESTIONS.md`](QUESTIONS.md): my questions about the sources.
 
 Delivery: this repository as a zip of its working tree, with the git history and `data/outputs/`, but without `data/raw/` and `data/parquet/`.
