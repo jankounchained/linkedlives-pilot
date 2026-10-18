@@ -85,3 +85,24 @@ python3 -I scripts/check_notebook_outputs.py path/to/notebook.ipynb
 python3 -I scripts/check_notebook_outputs.py --require-empty path/to/notebook.ipynb  # source must carry no outputs
 python3 -I scripts/check_notebook_outputs.py --self-test
 ```
+
+## EDA notebooks
+
+- `task1_handicaps/eda.ipynb`: Task 1, exploration of the `handicaps` variable across the census years.
+- `task2_linking/eda.ipynb`: Task 2, exploration of the 1846 and 1850 Danish West Indies censuses ahead of linking.
+
+Both are committed with their outputs (D-02), so GitHub renders them inline. The
+outputs were reviewed by hand under the no-record-level rule (no name next to an age,
+owner, birthplace or household; no `pa_id` or record-number columns; no owner names;
+no name shown with a count below 5; no identifying free text) and pass
+`scripts/check_notebook_outputs.py`; the pre-commit hook re-scans them on every commit.
+
+Re-rendering needs the local data under `data/` (see "Data (not in git)" and "Prepare data"):
+
+```bash
+uv run jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=900 task1_handicaps/eda.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=900 task2_linking/eda.ipynb
+uv run python scripts/check_notebook_outputs.py task1_handicaps/eda.ipynb task2_linking/eda.ipynb
+```
+
+Check the outputs again before committing a re-render.
