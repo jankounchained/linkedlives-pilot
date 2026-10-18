@@ -60,7 +60,15 @@ Plans:
   4. `handicaps_review.parquet` and its CSV export hold the review subset chosen by the user's impact definition. Its size is calculated from the brief's 100–120 records/hour × 2–3 hours/day, with the arithmetic shown. It has empty `decision` and `comment` columns.
   5. A reviewer can follow the Task 1 README (in its subdirectory) from EDA findings through assumptions, decisions, conclusions and next steps without opening the code.
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+**Wave 1**
+- [ ] 02-01-PLAN.md — harmonise.py: File A mapping (committed), LLM category lookup (committed), File B review + seeded example records with CSV (local only under data/outputs/task1/), --check (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 02-02-PLAN.md — Task 1 README (EDA findings to next steps, HARM-06 deviation, FACT key figures) and close-out: PROJECT.md outcomes, reproducibility and governance audit (wave 2)
+
 **UI hint**: no
 
 ### Phase 3: Task 2 — Linking
@@ -102,6 +110,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Setup & EDA | 4/4 | In Progress | - |
-| 2. Task 1 — Harmonization | 0/TBD | Not started | - |
+| 2. Task 1 — Harmonization | 0/2 | Planned | - |
 | 3. Task 2 — Linking | 0/TBD | Not started | - |
 | 4. Hand-in | 0/TBD | Not started | - |
