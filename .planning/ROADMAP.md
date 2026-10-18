@@ -60,7 +60,7 @@ Plans:
   4. `handicaps_review.parquet` and its CSV export hold the review subset chosen by the user's impact definition. Its size is calculated from the brief's 100–120 records/hour × 2–3 hours/day, with the arithmetic shown. It has empty `decision` and `comment` columns.
   5. A reviewer can follow the Task 1 README (in its subdirectory) from EDA findings through assumptions, decisions, conclusions and next steps without opening the code.
 
-**Plans**: 2/2 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 **Wave 1**
@@ -68,6 +68,9 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 02-02-PLAN.md — Task 1 README (EDA findings to next steps, HARM-06 deviation, FACT key figures) and close-out: PROJECT.md outcomes, reproducibility and governance audit (wave 2)
+
+**Gap closure**
+- [ ] 02-03-PLAN.md — D-17 digit guard (CR-01) with refreshed lookup and regenerated outputs, D-19 review fixes (category_inherited, CSV-safe cells, lookup validation), README corrections (CR-02) and figures, HARM-06 wording (D-18), review dispositions (gap closure)
 
 **UI hint**: no
 
