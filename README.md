@@ -8,7 +8,13 @@ Task 2: design and implement a simple method to link the 1846 and 1850 Danish We
 - [`task1_handicaps/README.md`](task1_handicaps/README.md): Task 1, from the EDA findings to the outputs, decisions, conclusions and next steps.
 - [`task2_linking/README.md`](task2_linking/README.md): Task 2, the linking design.
 - [`task1_handicaps/eda.ipynb`](task1_handicaps/eda.ipynb) and [`task2_linking/eda.ipynb`](task2_linking/eda.ipynb): the exploration behind each task, saved with their outputs.
-- `data/outputs/task1/`: File B, the Task 1 review files for the historians. They hold whole census records, so they are never committed and travel only inside the hand-in zip.
+- `data/outputs/task1/handicaps_review.csv`: the Task 1 review table for the historians ("File B"). It has one row per cluster of `handicaps` spellings, the 300 with the most records first. Each row gives the proposed standard value, the merged spellings with counts, a suggested category, and empty `decision` and `comment` columns to fill in. It opens in Excel with a Danish locale. Next to it:
+  - `handicaps_review_records.csv`: up to 5 whole census records per cluster as examples, linked by `cluster_id`.
+  - `.parquet` copies of both files.
+  - `review_leaders.parquet`: a helper list used to refresh the category lookup.
+
+  The records file holds whole census records, so this folder is never committed and travels only inside the hand-in zip.
+- `task1_handicaps/outputs/handicaps_mapping.parquet`: the full mapping ("File A"), one row per distinct raw value with its counts per census, proposed standard, confidence and category.
 - [`QUESTIONS.md`](QUESTIONS.md): my questions about the sources.
 
 Delivery: this repository as a zip of its working tree, with the git history and `data/outputs/`, but without `data/raw/` and `data/parquet/`.
