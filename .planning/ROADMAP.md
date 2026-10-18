@@ -20,6 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Phase Details
 
 ### Phase 1: Setup & EDA
+
 **Goal**: Both datasets are available locally as parquet in a reproducible environment. Each task's data is understood well enough for the user to settle the open approach decisions.
 **Depends on**: Nothing (first phase)
 **Requirements**: SETUP-01, SETUP-02, SETUP-03, EDA-01, EDA-02, EDA-03, EDA-04
@@ -30,16 +31,24 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The rendered Task 1 EDA notebook shows `handicaps` per census year (missingness, cardinality, frequency/coverage curve, examples of messy values). It also has a column overview (type, % missing, cardinality, examples) that describes what the data shows without asserting official definitions.
   4. The rendered Task 2 EDA notebook shows the DWI column overview. It measures how stable the free/enslaved flag, owner fields, surnames and age are from 1846 to 1850.
   5. The EDA states the facts behind each open decision: Task 1 method, LLM-for-categories, embedding scope and blocking window width. The user can decide them from these facts. Phase 1 makes none of the decisions itself.
+
 **Plans**: 4 plans
 
 Plans:
+**Wave 1**
 - [ ] 01-01-PLAN.md — uv env, D-05 data layout, prepare_data.py (DWI xlsx + 5 census CSVs + Guide to all-String parquet), notebook-output scanner and pre-commit data guard (wave 1, package-legitimacy checkpoint)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — Task 1 EDA notebook: handicaps per year, column overview, missingness by geography, normalisation preview, coverage curve, facts (wave 2)
 - [ ] 01-03-PLAN.md — Task 2 EDA notebook: DWI overview and casts, unique-name anchors and age noise, window-cost table, stability, households, facts (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 01-04-PLAN.md — D-02 one-way-door gate: human review of rendered outputs, then commit notebooks with outputs (wave 3, blocking-human checkpoint)
+
 **UI hint**: no
 
 ### Phase 2: Task 1 — Harmonization
+
 **Goal**: The historians get a first-iteration harmonisation of `handicaps`: a complete mapping from raw values to proposed standard values, and a bounded, impact-ranked review file Asbjørn can work through.
 **Depends on**: Phase 1, plus the user's decisions after the EDA (Task 1 method, impact definition, LLM/embedding scope)
 **Requirements**: HARM-01, HARM-02, HARM-03, HARM-04, HARM-05, HARM-06
@@ -50,10 +59,12 @@ Plans:
   3. Values that differ in wording rather than spelling (e.g. "blind" vs "svagsynet") are grouped under the nearest frequent anchor, with cosine similarity as the confidence. This applies within the scope the user confirmed after the EDA. The output stays a suggestion, and the modern-meaning-bias caveat is documented.
   4. `handicaps_review.parquet` and its CSV export hold the review subset chosen by the user's impact definition. Its size is calculated from the brief's 100–120 records/hour × 2–3 hours/day, with the arithmetic shown. It has empty `decision` and `comment` columns.
   5. A reviewer can follow the Task 1 README (in its subdirectory) from EDA findings through assumptions, decisions, conclusions and next steps without opening the code.
+
 **Plans**: TBD
 **UI hint**: no
 
 ### Phase 3: Task 2 — Linking
+
 **Goal**: The 1846 and 1850 DWI censuses are linked by a transparent, hand-rolled method. Each link has an explainable score and a confidence, and its plausibility can be judged without ground truth.
 **Depends on**: Phase 1 (blocking window width from its EDA). Does not need Phase 2's outputs.
 **Requirements**: LINK-01, LINK-02, LINK-03, LINK-04, LINK-05, LINK-06, LINK-07
@@ -64,10 +75,12 @@ Plans:
   3. Each link's score can be explained from its features: given-name similarity weighted by name frequency, surname similarity when both surnames are present, |age difference − 4|, and birthplace / island / owner agreement.
   4. A household second pass raises the score for co-residents of household members who are already linked. The output shows how many links that pass added or changed compared with the base result.
   5. The plausibility evaluation and the Task 2 README show the age-difference distribution, link rates by sex / island / free-enslaved status, and sample pairs per confidence band. The README also covers method, assumptions, decisions, limitations and next steps (Splink, scalable blocking, LLM/manual review).
+
 **Plans**: TBD
 **UI hint**: no
 
 ### Phase 4: Hand-in
+
 **Goal**: The reviewers receive a repo before the deadline that they can open, set up and run from the root README, and they can find each task's entry point straight away.
 **Depends on**: Phase 2, Phase 3
 **Requirements**: DOC-01, DOC-02, DOC-03
@@ -77,6 +90,7 @@ Plans:
   2. The root README shows what is where and links both task READMEs. It has one sentence on time spent and one line on AI use that points to `.planning/`.
   3. `QUESTIONS.md` exists and was written by the user after discussing the questions. Claude does not write it.
   4. A cover email draft is ready to send to bre@rigsarkivet.dk and or@rigsarkivet.dk before 23:59 2026-10-18. It states the delivery form (repo invite or zip, the user's decision), time spent and the entry points.
+
 **Plans**: TBD
 **UI hint**: no
 
