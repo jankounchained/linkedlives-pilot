@@ -4,7 +4,7 @@ Run: uv run python task1_handicaps/harmonise.py [--check]
 
 Pools the `handicaps` column of the five census parquet files (1801, 1850, 1860,
 1880, 1901), trivially normalises each value, clusters the content values by
-fuzzy similarity (Phase 1 EDA method, unchanged) and writes:
+fuzzy similarity (Phase 1 EDA method plus the D-17 digit guard) and writes:
 
 - File A, task1_handicaps/outputs/handicaps_mapping.parquet (committed): one row
   per distinct trivially normalised value, value-level only, no records.
@@ -20,6 +20,7 @@ The script prints only paths, counts and FACT lines, never rows.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -31,7 +32,7 @@ import project_paths as pp  # noqa: E402
 from prepare_data import _tmp_path, write_atomic  # noqa: E402,F401
 
 YEARS = pp.CENSUS_YEARS
-REF_THRESHOLD = 85  # Phase 1 EDA value (D-03)
+REF_THRESHOLD = 85  # Phase 1 EDA value (D-03), unchanged by the D-17 digit guard
 
 # Review capacity (D-12): one reviewer-day from the brief's 100-120 records/h x 2-3 h.
 RECORDS_PER_HOUR = 120
@@ -108,18 +109,35 @@ def fact(key: str, value) -> None:
     print(f"FACT {PREFIX}{key}={value}")
 
 
-def leader_clusters(values: list[str], threshold: int) -> tuple[dict[str, str], list[str]]:
-    """Greedy leader clustering: each value joins the best leader at ratio >= threshold."""
+def digit_runs(s: str) -> tuple[str, ...]:
+    """Maximal runs of the digits 0-9 in s, kept as strings (D-17)."""
+    return tuple(re.findall(r"\d+", s))
+
+
+def leader_clusters(
+    values: list[str], threshold: int, digit_guard: bool = True
+) -> tuple[dict[str, str], list[str]]:
+    """Greedy leader clustering: each value joins the best leader at ratio >= threshold.
+
+    D-17 digit guard: with digit_guard true, a value may only join a leader whose digit runs
+    are identical to its own (candidates in leader-creation order); otherwise it becomes a
+    new leader. fuzz.ratio treats digits like letters, so without the guard values stating a
+    different age or duration merge. No parameter: exact equality of the digit runs.
+    digit_guard=False is the unguarded Phase 1 method, kept for the counterfactual only.
+    """
     leaders: list[str] = []
+    by_digits: dict[tuple[str, ...], list[str]] = {}
     mapping: dict[str, str] = {}
     for v in values:
+        candidates = by_digits.get(digit_runs(v), []) if digit_guard else leaders
         match = (
-            process.extractOne(v, leaders, scorer=fuzz.ratio, score_cutoff=threshold)
-            if leaders
+            process.extractOne(v, candidates, scorer=fuzz.ratio, score_cutoff=threshold)
+            if candidates
             else None
         )
         if match is None:
             leaders.append(v)
+            by_digits.setdefault(digit_runs(v), []).append(v)
             mapping[v] = v
         else:
             mapping[v] = match[0]
@@ -220,11 +238,16 @@ def value_table(year_raw: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     return values, raw_pooled
 
 
-def cluster_values(values: pl.DataFrame) -> pl.DataFrame:
-    """Cluster content values (D-03..D-05); returns value, cluster_id, proposed_standard, confidence."""
+def content_order(values: pl.DataFrame) -> list[str]:
+    """Content values in the clustering visiting order: n_total descending, then value (D-03)."""
     content = values.filter(pl.col("value_type") == "content")
-    order = content.sort(["n_total", "value"], descending=[True, False])["value"].to_list()
-    mapping, _ = leader_clusters(order, REF_THRESHOLD)
+    return content.sort(["n_total", "value"], descending=[True, False])["value"].to_list()
+
+
+def cluster_values(values: pl.DataFrame) -> pl.DataFrame:
+    """Cluster content values (D-03..D-05, D-17); returns value, cluster_id, proposed_standard, confidence."""
+    content = values.filter(pl.col("value_type") == "content")
+    mapping, _ = leader_clusters(content_order(values), REF_THRESHOLD)
     assign = pl.DataFrame(
         {
             "value": list(mapping),
@@ -266,6 +289,21 @@ def report_coverage(values: pl.DataFrame, assigned: pl.DataFrame) -> pl.DataFram
         assigned.filter(pl.col("cluster_id") <= TOP_K).height,
     )
     return cluster_n
+
+
+def report_digit_guard(values: pl.DataFrame) -> None:
+    """Counterfactual FACT lines for the D-17 digit guard: what the unguarded method would do."""
+    n_total = dict(zip(values["value"].to_list(), values["n_total"].to_list(), strict=True))
+    mapping, leaders = leader_clusters(content_order(values), REF_THRESHOLD, digit_guard=False)
+    moved = [v for v, ldr in mapping.items() if digit_runs(v) != digit_runs(ldr)]
+    per_leader: dict[str, int] = {}
+    for v, ldr in mapping.items():
+        per_leader[ldr] = per_leader.get(ldr, 0) + n_total[v]
+    curve = cum_share(list(per_leader.values()))
+    fact("digit_guard.clusters_unguarded", len(leaders))
+    fact("digit_guard.values_moved", len(moved))
+    fact("digit_guard.records_moved", sum(n_total[v] for v in moved))
+    fact(f"digit_guard.coverage.top{TOP_K}_unguarded", coverage_at(curve, TOP_K))
 
 
 def review_leaders(values: pl.DataFrame, assigned: pl.DataFrame) -> pl.DataFrame:
@@ -507,6 +545,11 @@ def check_outputs(lookup_path: Path) -> int:
         ).item(),
         "n_total_is_year_sum",
     )
+    digit_violations = sum(
+        digit_runs(v) != digit_runs(ldr)
+        for v, ldr in zip(ct["value"].to_list(), ct["proposed_standard"].to_list(), strict=True)
+    )
+    report(digit_violations == 0, "digit_runs_match_leader", f"violations={digit_violations}")
 
     r = pl.read_parquet(REVIEW_PATH)
     n_clusters = ct["cluster_id"].n_unique()
@@ -603,6 +646,7 @@ def main() -> int:
 
     assigned = cluster_values(values)
     report_coverage(values, assigned)
+    report_digit_guard(values)
     leaders = review_leaders(values, assigned)
     if args.write_leaders:
         assert_local_only(LEADERS_PATH)
