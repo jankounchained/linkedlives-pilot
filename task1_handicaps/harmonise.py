@@ -47,6 +47,22 @@ MAPPING_PATH = TASK_DIR / "outputs" / "handicaps_mapping.parquet"
 REVIEW_DIR = pp.OUTPUTS_DIR / "task1"
 REVIEW_PATH = REVIEW_DIR / "handicaps_review.parquet"
 REVIEW_CSV = REVIEW_DIR / "handicaps_review.csv"
+LOOKUP_PATH = TASK_DIR / "category_suggestions.parquet"
+LEADERS_PATH = REVIEW_DIR / "review_leaders.parquet"
+
+# Category vocabulary (D-09): the census's own historical terms plus explicit buckets.
+CATEGORY_LABELS = [
+    "døvstum/døv",
+    "blind",
+    "sindssyg",
+    "uden forstandsevner/idiot",
+    "krøbling/vanfør",
+    "multiple conditions",
+    "other/unclear",
+    "not a condition (suspected misplaced)",
+]
+LOOKUP_COLUMNS = ["leader", "suggested_category", "category_source"]
+CATEGORY_SOURCE = "llm_suggestion"
 
 PREFIX = "task1.harmonise."
 
@@ -61,6 +77,8 @@ MAPPING_COLUMNS = [
     "proposed_standard",
     "confidence",
     "in_review",
+    "suggested_category",
+    "category_source",
 ]
 
 
@@ -246,10 +264,63 @@ def report_coverage(values: pl.DataFrame, assigned: pl.DataFrame) -> pl.DataFram
     return cluster_n
 
 
-def build_mapping(values: pl.DataFrame, assigned: pl.DataFrame) -> pl.DataFrame:
-    """File A (HARM-02): one row per trivial value, value-level only."""
+def review_leaders(values: pl.DataFrame, assigned: pl.DataFrame) -> pl.DataFrame:
+    """Value-level worksheet, one row per review cluster: cluster_id, leader, n_total, merged_values."""
+    return (
+        values.join(assigned, on="value")
+        .filter(pl.col("cluster_id") <= TOP_K)
+        .sort(["cluster_id", "n_total", "value"], descending=[False, True, False])
+        .group_by("cluster_id", maintain_order=True)
+        .agg(
+            pl.col("proposed_standard").first().alias("leader"),
+            pl.col("n_total").sum(),
+            pl.format("{} ({})", pl.col("value"), pl.col("n_total")).str.join(" | ").alias("merged_values"),
+        )
+        .select("cluster_id", "leader", "n_total", "merged_values")
+        .sort("cluster_id")
+    )
+
+
+def load_lookup(path: Path, leaders: list[str]) -> pl.DataFrame:
+    """Validate the category lookup and return it restricted to review leaders (HARM-03, D-08, D-10).
+
+    Called before any output is written, so a bad lookup leaves previous outputs untouched.
+    """
+    if not path.exists():
+        print(
+            f"missing category lookup: {path} (run --write-leaders, see task1_handicaps/README.md)",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    lookup = pl.read_parquet(path)
+    if lookup.columns != LOOKUP_COLUMNS:
+        print(f"category lookup columns {lookup.columns} != {LOOKUP_COLUMNS}", file=sys.stderr)
+        sys.exit(2)
+    bad = lookup.filter(~pl.col("suggested_category").is_in(CATEGORY_LABELS)).height
+    if bad:
+        print(f"category lookup has {bad} rows with a label outside CATEGORY_LABELS", file=sys.stderr)
+        sys.exit(2)
+    if lookup.filter(pl.col("category_source") != CATEGORY_SOURCE).height:
+        print(f"category lookup category_source must be {CATEGORY_SOURCE!r} in every row", file=sys.stderr)
+        sys.exit(2)
+    have = set(lookup["leader"].to_list())
+    missing = [ldr for ldr in leaders if ldr not in have]
+    if missing:
+        print(
+            f"missing category suggestions for {len(missing)} review leaders (run --write-leaders)",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    fact("lookup.missing", len(missing))
+    fact("lookup.unused", len(have - set(leaders)))
+    return lookup.filter(pl.col("leader").is_in(leaders)).unique(subset="leader")
+
+
+def build_mapping(values: pl.DataFrame, assigned: pl.DataFrame, lookup: pl.DataFrame) -> pl.DataFrame:
+    """File A (HARM-02, HARM-03): one row per trivial value, value-level only."""
     return (
         values.join(assigned, on="value", how="left")
+        .join(lookup.rename({"leader": "proposed_standard"}), on="proposed_standard", how="left")
         .with_columns(
             (pl.col("cluster_id").is_not_null() & (pl.col("cluster_id") <= TOP_K)).alias("in_review"),
         )
@@ -272,6 +343,8 @@ def build_review(mapping: pl.DataFrame, raw_pooled: pl.DataFrame) -> pl.DataFram
         pl.len().cast(pl.Int64).alias("merged_values_n"),
         pl.col("confidence").mean().round(4).alias("confidence_mean"),
         pl.col("confidence").min().alias("confidence_min"),
+        pl.col("suggested_category").first(),
+        pl.col("category_source").first(),
     )
     spell = (
         raw_pooled.join(in_review.select("value", "cluster_id"), on="value")
@@ -298,6 +371,8 @@ def build_review(mapping: pl.DataFrame, raw_pooled: pl.DataFrame) -> pl.DataFram
             "merged_spellings",
             "confidence_mean",
             "confidence_min",
+            "suggested_category",
+            "category_source",
             "decision",
             "comment",
         )
@@ -316,7 +391,20 @@ def write_outputs(mapping: pl.DataFrame, review: pl.DataFrame) -> None:
 # --- check -----------------------------------------------------------------------
 
 
-def check_outputs() -> int:
+def check_lookup(path: Path, report, review: pl.DataFrame) -> None:
+    if not path.exists():
+        report(False, "lookup_exists", str(path))
+        return
+    lk = pl.read_parquet(path)
+    report(lk.columns == LOOKUP_COLUMNS, "lookup_columns", f"cols={lk.width}")
+    report(lk["suggested_category"].is_in(CATEGORY_LABELS).all(), "lookup_labels_in_vocabulary")
+    report(lk["category_source"].eq(CATEGORY_SOURCE).all(), "lookup_category_source")
+    covered = set(lk["leader"].to_list())
+    missing = [ldr for ldr in review["proposed_standard"].to_list() if ldr not in covered]
+    report(not missing, "lookup_covers_review_leaders", f"missing={len(missing)}")
+
+
+def check_outputs(lookup_path: Path) -> int:
     failed = 0
 
     def report(ok: bool, name: str, detail: str = "") -> None:
@@ -375,6 +463,21 @@ def check_outputs() -> int:
         "review_decision_comment_empty",
     )
     report(inside_data_root(REVIEW_PATH), "review_inside_data_root")
+
+    report(
+        a.select(
+            (pl.col("suggested_category").is_not_null() == pl.col("in_review")).all()
+        ).item(),
+        "suggestion_iff_in_review",
+    )
+    report(
+        a.filter(
+            pl.col("category_source").is_not_null() & (pl.col("category_source") != CATEGORY_SOURCE)
+        ).is_empty(),
+        "category_source_llm_or_null",
+    )
+    report(r["suggested_category"].null_count() == 0, "review_suggestions_complete")
+    check_lookup(lookup_path, report, r)
     return 1 if failed else 0
 
 
@@ -384,9 +487,17 @@ def check_outputs() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="validate outputs, write nothing")
+    parser.add_argument(
+        "--write-leaders",
+        action="store_true",
+        help="write the review-leader worksheet (local only) used to author the category lookup",
+    )
+    parser.add_argument(
+        "--lookup", type=Path, default=LOOKUP_PATH, help="category suggestion lookup parquet"
+    )
     args = parser.parse_args()
     if args.check:
-        return check_outputs()
+        return check_outputs(args.lookup)
 
     require_inputs()
     year_raw = pooled_raw_counts()
@@ -402,7 +513,20 @@ def main() -> int:
 
     assigned = cluster_values(values)
     report_coverage(values, assigned)
-    mapping = build_mapping(values, assigned)
+    leaders = review_leaders(values, assigned)
+    if args.write_leaders:
+        assert_local_only(LEADERS_PATH)
+        write_atomic(leaders, LEADERS_PATH)
+        print(f"wrote {LEADERS_PATH} rows={leaders.height}")
+        return 0
+
+    lookup = load_lookup(args.lookup, leaders["leader"].to_list())
+    mapping = build_mapping(values, assigned, lookup)
+    content_records = int(values.filter(pl.col("value_type") == "content")["n_total"].sum())
+    with_suggestion = mapping.filter(pl.col("suggested_category").is_not_null())
+    fact("category.labels_used", with_suggestion["suggested_category"].n_unique())
+    fact("category.values", with_suggestion.height)
+    fact("category.record_share", int(with_suggestion["n_total"].sum()) / content_records)
     review = build_review(mapping, raw_pooled)
     write_outputs(mapping, review)
     return 0
