@@ -19,12 +19,14 @@ uv run python task1_handicaps/harmonise.py --lookup PATH    # use another catego
 
 | File | Where | Committed? | Content |
 |---|---|---|---|
-| File A `handicaps_mapping.parquet` | `task1_handicaps/outputs/` | yes | One row per distinct trivially normalised value (value-level only, no records). Columns: `value`, `value_type`, `n_1801` to `n_1901`, `n_total`, `raw_variants_n`, `raw_spellings`, `cluster_id`, `proposed_standard`, `confidence`, `in_review`, `suggested_category`, `category_source`, `category_inherited` |
+| File A `handicaps_mapping.parquet` | `task1_handicaps/outputs/` | yes | One row per distinct trivially normalised value (value-level counts, no other person attributes; see the note on rare values below). Columns: `value`, `value_type`, `n_1801` to `n_1901`, `n_total`, `raw_variants_n`, `raw_spellings`, `cluster_id`, `proposed_standard`, `confidence`, `in_review`, `suggested_category`, `category_source`, `category_inherited` |
 | `category_suggestions.parquet` | `task1_handicaps/` | yes | The LLM category lookup: `leader`, `suggested_category`, `category_source` (300 rows) |
 | File B `handicaps_review.parquet` + `.csv` | `data/outputs/task1/` | no | 300 rows, one per cluster: `cluster_id`, `proposed_standard`, `n_total`, per-year counts, `merged_spellings` with counts, `confidence_mean`, `confidence_min`, `examples_n`, `suggested_category`, `category_source`, `category_inherited`, and empty `decision` and `comment` |
 | File B `handicaps_review_records.parquet` + `.csv` | `data/outputs/task1/` | no | Up to 5 whole census records per cluster, linked to the review table by `cluster_id`; starts with `cluster_id`, `proposed_standard`, `year`, `pa_id`, `handicaps`, then every census column |
 
 File B holds whole census records, so it is written only inside the gitignored `data/` directory and is never committed (D-15). The script refuses to write it anywhere else. It reaches the recipients inside the hand-in zip, which Phase 4 builds from the working tree to include `data/outputs/` and exclude `data/raw/` and `data/parquet/` (D-16).
+
+File A is not fit for publication as it stands (code review CR-01, deferred). `handicaps` is free text, and 2,813 of the 3,333 content values occur in at most 2 records. Such a value, and its `raw_spellings`, is in effect one person's transcribed text, and some describe a household or name a person. This repo is shared only with Rigsarkivet, which holds the source data. Before any wider sharing, rare values (for example those seen in fewer than 5 records) should be masked in the committed File A, with the complete mapping kept local under `data/outputs/`, and the earlier versions of File A purged from the git history.
 
 The CSV files are UTF-8 with a BOM and separated by semicolons, so Excel with a Danish locale splits the columns and shows æ, ø and å correctly. In the CSV copies only, a cell that begins with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading single quote, so that Excel shows it as text and not as a formula. The parquet files keep the original value (D-19). `category_inherited` is true when a value's category comes from its cluster leader and not from the value itself (D-10, D-19); in the review table it is true when any value of the cluster is inherited. `pa_id` identifies a record within one census year only: one `pa_id` string appears in both 1850 and 1901. Records are therefore identified by `year` and `pa_id` together.
 
@@ -105,7 +107,7 @@ Terms for illness and disability changed meaning over time. The category suggest
 
 ## Key figures
 
-These lines are printed by `harmonise.py`. The numbers in this README come from three sources: these lines, the Phase 1 notebook, and per-value counts read from File A (the single-letter counts and the "syg i 1 aar" example).
+These lines are printed by `harmonise.py`. The numbers in this README come from three sources: these lines, the Phase 1 notebook, and per-value counts read from File A (the single-letter counts, the rare-value counts and the "syg i 1 aar" example).
 
 ```text
 FACT task1.harmonise.records.filled=143597
