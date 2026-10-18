@@ -3,23 +3,45 @@
 Task 1: explore and prepare the `handicaps` census variable for standardisation.
 Task 2: design and implement a simple method to link the 1846 and 1850 Danish West Indies censuses.
 
+## Findings in brief
+
+**Task 1: `handicaps` (implemented)**
+
+- Of 143,597 filled `handicaps` cells across 1801, 1850, 1860, 1880 and 1901, 77% are placeholders (`-`, `?`, bare numbers). Empty or a placeholder says nothing about a condition, and 1801 is practically empty.
+- Trivial normalisation turns 4,520 raw values into 3,416. Fuzzy clustering groups the 3,333 content values into 2,160 clusters, each with a proposed standard (its most frequent spelling) and a confidence.
+- One reviewer-day for Asbjørn standardises 92.7% of real-content records. That's 300 clusters, sized from the brief's 100–120 records an hour and 2–3 hours a day. 80% needs only 26 clusters.
+- Numbers matter: a digit guard stops "syg i 1 aar" being merged into "syg i 2 aar". It costs 2.5 points of coverage, which I think is worth it.
+- Categories are LLM suggestions in the census's own vocabulary (døvstum, sindssyg, uden forstandsevner, ...), so modern meanings don't creep in. The historian decides.
+- The review table for the team is `data/outputs/task1/handicaps_review.csv` (File B, details below).
+
+**Task 2: linking (designed, not implemented)**
+
+- Age noise was measured on 1,381 people whose name occurs once in each census. Their age gap centres on the expected 4 years, but the tails are wide. A ±5-year birth-year window keeps 70.6% of them at 16% of the sex-only candidate pairs.
+- The free/enslaved flag and both owner fields are empty for every 1850 record. So the change across emancipation (July 1848) can't be observed in this file, and owner can't be a linking feature.
+- Plan: block on sex and birth year ±5, then score with an explainable additive score (name, surname, age gap, island, birthplace). Assign links greedily one-to-one with a margin and a confidence band, then run a household second pass. Evaluate plausibility without ground truth. Details are in [`task2_linking/README.md`](task2_linking/README.md).
+
+My questions about the sources are in [`QUESTIONS.md`](QUESTIONS.md).
+
+## Time spent and AI use
+
+I spent about 3.5 hours on this. In that time I explored both datasets and made the decisions: what counts as a placeholder, how to cluster, how big a reviewer-day is, and the Task 2 design. Task 1 got done, and Task 2 got as far as the exploration and the design.
+
+I used Claude Code to write and check the code and documentation from those decisions. Some of that ran while I wasn't at the keyboard.
+
 ## Start here
 
 - [`task1_handicaps/README.md`](task1_handicaps/README.md): Task 1, from the EDA findings to the outputs, decisions, conclusions and next steps.
 - [`task2_linking/README.md`](task2_linking/README.md): Task 2, the linking design.
 - [`task1_handicaps/eda.ipynb`](task1_handicaps/eda.ipynb) and [`task2_linking/eda.ipynb`](task2_linking/eda.ipynb): the exploration behind each task, saved with their outputs.
-- `data/outputs/task1/handicaps_review.csv`: the Task 1 review table for the historians ("File B"). It has one row per cluster of `handicaps` spellings, the 300 with the most records first. Each row gives the proposed standard value, the merged spellings with counts, a suggested category, and empty `decision` and `comment` columns to fill in. It opens in Excel with a Danish locale. Next to it:
+- `data/outputs/task1/handicaps_review.csv`: the Task 1 review table for the historians ("File B"). It has one row per cluster of `handicaps` spellings, the 300 with the most records first. Each row gives the proposed standard, the merged spellings with counts, a suggested category, and empty `decision` and `comment` columns to fill in. It opens in Excel with a Danish locale. Next to it:
   - `handicaps_review_records.csv`: up to 5 whole census records per cluster as examples, linked by `cluster_id`.
   - `.parquet` copies of both files.
   - `review_leaders.parquet`: a helper list used to refresh the category lookup.
 
   The records file holds whole census records, so this folder is never committed and travels only inside the hand-in zip.
-- `task1_handicaps/outputs/handicaps_mapping.parquet`: the full mapping ("File A"), one row per distinct `handicaps` value (after trivial normalisation) with its counts per census, proposed standard, confidence and category.
-- [`QUESTIONS.md`](QUESTIONS.md): my questions about the sources.
+- `task1_handicaps/outputs/handicaps_mapping.parquet`: the full mapping ("File A"). It has one row per distinct `handicaps` value (after trivial normalisation), with its counts per census, proposed standard, confidence and category.
 
 Delivery: this repository as a zip of its working tree, with the git history and `data/outputs/`, but without `data/raw/` and `data/parquet/`.
-
-Task 1 is implemented. Task 2 is designed but not implemented: I ran out of time, so its README is a design note built on the EDA, and there is no linking script or links file.
 
 Nothing has to run just to read the results: the zip already holds File A, File B and both notebooks with their outputs. To rebuild everything, put the source files in place (see "Data (not in git)") and run:
 
@@ -30,12 +52,6 @@ uv run python scripts/prepare_data.py --check
 uv run python task1_handicaps/harmonise.py
 uv run python task1_handicaps/harmonise.py --check
 ```
-
-## Time spent and AI use
-
-About 3.5 hours of my own time; Claude Code agents did further work in the background while I was away.
-
-The work was done with Claude Code (GSD planning workflow); every plan, decision, review and verification report is kept in [`.planning/`](.planning/).
 
 ## What is where
 
@@ -49,9 +65,7 @@ task1_handicaps/           Task 1: README.md, eda.ipynb, harmonise.py and
                            category_suggestions.parquet (the LLM category lookup)
 task1_handicaps/outputs/   File A, handicaps_mapping.parquet (value-level, committed)
 task2_linking/             Task 2: README.md (design note) and eda.ipynb
-.planning/                 plans, decisions, reviews and verification reports
 .githooks/                 pre-commit data guard (see "Data governance")
-.claude/CLAUDE.md          Claude Code project instructions
 data/                      gitignored, never committed
   outputs/task1/           File B, whole census records (in the zip only)
   raw/, parquet/           source files and converted data (not in the zip)
@@ -150,11 +164,11 @@ Task 2 has no script to run. Its EDA notebook re-renders as described in "EDA no
 Never enters git: raw source files, the converted parquet files, and any record-level
 output (rows with names, ages, owners, households or `pa_id` values). Committed
 outputs are aggregates only (value-frequency tables, summary statistics, plots), or
-`pa_id` plus aggregates. One known exception: the rare free-text values in File A
-(code review CR-01, deferred), described under "Outputs" in `task1_handicaps/README.md`.
+`pa_id` plus aggregates. One known exception: the rare free-text values in File A,
+described under "Outputs" in `task1_handicaps/README.md`.
 
-Notebooks are committed with outputs (D-02), so their outputs must show aggregates
-only. Two guards back this up:
+Notebooks are committed with outputs, so their outputs must show aggregates only.
+Two guards back this up:
 
 - `.gitignore` covers `data/`, `*.xlsx`, `*.zip`, `*.csv` and `*.pdf`.
 - A tracked pre-commit hook (`.githooks/pre-commit`) rejects staged paths under
@@ -180,7 +194,7 @@ python3 -I scripts/check_notebook_outputs.py --self-test
 - `task1_handicaps/eda.ipynb`: Task 1, exploration of the `handicaps` variable across the census years.
 - `task2_linking/eda.ipynb`: Task 2, exploration of the 1846 and 1850 Danish West Indies censuses ahead of linking.
 
-Both are committed with their outputs (D-02), so they can be read without re-running them. The
+Both are committed with their outputs, so they can be read without re-running them. The
 outputs were reviewed by hand under the no-record-level rule (no name next to an age,
 owner, birthplace or household; no `pa_id` or record-number columns; no owner names;
 no name shown with a count below 5; no identifying free text) and pass

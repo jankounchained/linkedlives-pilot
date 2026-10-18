@@ -2,12 +2,11 @@
 
 Run: uv run python scripts/prepare_data.py [--only dwi|census] [--check]
 
-No download code (D-04): source files must already be in data/raw/, see README.md,
-section "Data (not in git)". Every column is stored as String and nothing is coerced
-(D-06); later scripts cast explicitly and report parse failures as findings.
+No download code: source files must already be in data/raw/, see README.md,
+section "Data (not in git)". Every column is stored as String and nothing is coerced; later scripts cast explicitly and report parse failures as findings.
 
 Only the five census CSV members and the Release 2 Guide are read from the
-Digidata zip (D-07). Members are streamed with ZipFile.open to fixed file names
+Digidata zip. Members are streamed with ZipFile.open to fixed file names
 in a temporary directory: no extract helpers, no destination path is ever derived
 from a member name, and the full 10.6 GB release is never unpacked.
 
@@ -71,7 +70,7 @@ def convert_dwi() -> None:
         infer_schema_length=0,
     )
     # fastexcel with infer_schema_length=0 already yields String; cast defensively.
-    # The leftover Column1 is kept unchanged, nothing else is coerced (D-06).
+    # The leftover Column1 is kept unchanged, nothing else is coerced.
     non_string = [c for c, t in frame.schema.items() if t != pl.String]
     if non_string:
         frame = frame.with_columns(pl.col(non_string).cast(pl.String))

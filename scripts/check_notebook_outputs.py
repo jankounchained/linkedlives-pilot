@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scan Jupyter notebook cell outputs for record-level content (stdlib only).
 
-This is the automated half of the D-02 rule (notebooks are committed with outputs,
+This is the automated half of the notebook rule (notebooks are committed with outputs,
 but never with individual records). It is a heuristic backstop on table headers:
 it cannot see free text, plots or values. The human review of the rendered
 notebooks (plan 01-04) is the final check.

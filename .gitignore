@@ -6,9 +6,9 @@ data/
 # Recruitment documents received from Linking Lab - not ours to redistribute
 *.pdf
 
-# GSD tooling installed locally; only the project instruction file is tracked
-.claude/*
-!.claude/CLAUDE.md
+# Local tooling and planning notes
+.claude/
+.planning/
 
 # Python
 .venv/

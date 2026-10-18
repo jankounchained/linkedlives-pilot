@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Data guard: raw and record-level data never enter git (SETUP-03, D-02).
+# Data guard: raw and record-level data never enter git.
 #   1. blocks staged paths under data/ and any .xlsx / .zip / .pdf
 #   2. scans every staged .ipynb blob with scripts/check_notebook_outputs.py
 # Activate once per clone (repo-level config, shared by every worktree):
@@ -24,7 +24,7 @@ while IFS= read -r -d '' path; do
       git show ":$path" > "$tmp"
       if ! report="$(python3 -I "$root/scripts/check_notebook_outputs.py" "$tmp" 2>&1)"; then
         printf '%s\n' "$report" >&2
-        echo "pre-commit: notebook $path has record-level looking outputs (see above; D-02)" >&2
+        echo "pre-commit: notebook $path has record-level looking outputs (see above)" >&2
         bad=1
       fi
       ;;

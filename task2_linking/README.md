@@ -1,6 +1,6 @@
 # Task 2: linking the 1846 and 1850 Danish West Indies censuses
 
-Status: designed, not implemented, for lack of time. There is no linking script and no `links.parquet`. This note gives the planned method and its evidence. Each number is an EDA fact from [`eda.ipynb`](eda.ipynb) (section given as §) or comes from the planning notes in [`../.planning/`](../.planning/). None is a linking result.
+Status: designed, not implemented, for lack of time. There is no linking script and no `links.parquet`. This note gives the planned method and its evidence. Each number is an EDA fact from [`eda.ipynb`](eda.ipynb) (section given as §) or is derived from those facts. None is a linking result.
 
 The file holds 43,891 records from 1846 and 39,523 from 1850 (§1), FamilySearch partner data. Emancipation in July 1848 falls between the two censuses.
 

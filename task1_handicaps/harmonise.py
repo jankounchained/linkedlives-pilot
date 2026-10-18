@@ -4,14 +4,14 @@ Run: uv run python task1_handicaps/harmonise.py [--check]
 
 Pools the `handicaps` column of the five census parquet files (1801, 1850, 1860,
 1880, 1901), trivially normalises each value, clusters the content values by
-fuzzy similarity (Phase 1 EDA method plus the D-17 digit guard) and writes:
+fuzzy similarity (EDA method plus a digit guard) and writes:
 
 - File A, task1_handicaps/outputs/handicaps_mapping.parquet (committed): one row
   per distinct trivially normalised value, value-level only, no records.
-- File B, data/outputs/task1/handicaps_review.{parquet,csv} (local only, D-15):
+- File B, data/outputs/task1/handicaps_review.{parquet,csv} (local only):
   the highest-impact clusters for the historian, with empty decision/comment.
 
-File B holds whole census records (D-15) and is only ever written inside the
+File B holds whole census records and is only ever written inside the
 gitignored data dir; the script refuses to write it anywhere else.
 
 The script prints only paths, counts and FACT lines, never rows.
@@ -32,16 +32,16 @@ import project_paths as pp  # noqa: E402
 from prepare_data import _tmp_path, write_atomic  # noqa: E402,F401
 
 YEARS = pp.CENSUS_YEARS
-REF_THRESHOLD = 85  # Phase 1 EDA value (D-03), unchanged by the D-17 digit guard
+REF_THRESHOLD = 85  # EDA value, unchanged by the digit guard
 
-# Review capacity (D-12): one reviewer-day from the brief's 100-120 records/h x 2-3 h.
+# Review capacity: one reviewer-day from the brief's 100-120 records/h x 2-3 h.
 RECORDS_PER_HOUR = 120
 HOURS_PER_DAY = 2.5
 TOP_K = int(RECORDS_PER_HOUR * HOURS_PER_DAY)
 RECORDS_PER_HOUR_RANGE = (100, 120)
 HOURS_PER_DAY_RANGE = (2, 3)
-EXAMPLES_PER_CLUSTER = 5  # D-14
-SEED = 20261018  # D-14
+EXAMPLES_PER_CLUSTER = 5
+SEED = 20261018
 
 TASK_DIR = Path(__file__).resolve().parent
 MAPPING_PATH = TASK_DIR / "outputs" / "handicaps_mapping.parquet"
@@ -55,7 +55,7 @@ CSV_BOM = b"\xef\xbb\xbf"
 LOOKUP_PATH = TASK_DIR / "category_suggestions.parquet"
 LEADERS_PATH = REVIEW_DIR / "review_leaders.parquet"
 
-# Category vocabulary (D-09): the census's own historical terms plus explicit buckets.
+# Category vocabulary: the census's own historical terms plus explicit buckets.
 CATEGORY_LABELS = [
     "døvstum/døv",
     "blind",
@@ -88,7 +88,7 @@ MAPPING_COLUMNS = [
 ]
 
 
-# --- helpers ported from the Phase 1 EDA (task1_handicaps/eda.ipynb) -------------
+# --- helpers ported from the EDA (task1_handicaps/eda.ipynb) -------------
 
 
 def filled(col: str) -> pl.Expr:
@@ -111,7 +111,7 @@ def fact(key: str, value) -> None:
 
 
 def digit_runs(s: str) -> tuple[str, ...]:
-    """Maximal runs of the digits 0-9 in s, kept as strings (D-17)."""
+    """Maximal runs of the digits 0-9 in s, kept as strings."""
     return tuple(re.findall(r"\d+", s))
 
 
@@ -120,11 +120,11 @@ def leader_clusters(
 ) -> tuple[dict[str, str], list[str]]:
     """Greedy leader clustering: each value joins the best leader at ratio >= threshold.
 
-    D-17 digit guard: with digit_guard true, a value may only join a leader whose digit runs
+    Digit guard: with digit_guard true, a value may only join a leader whose digit runs
     are identical to its own (candidates in leader-creation order); otherwise it becomes a
     new leader. fuzz.ratio treats digits like letters, so without the guard values stating a
     different age or duration merge. No parameter: exact equality of the digit runs.
-    digit_guard=False is the unguarded Phase 1 method, kept for the counterfactual only.
+    digit_guard=False is the unguarded EDA method, kept for the counterfactual only.
     """
     leaders: list[str] = []
     by_digits: dict[tuple[str, ...], list[str]] = {}
@@ -180,7 +180,7 @@ def inside_data_root(path: Path) -> bool:
 
 
 def assert_local_only(path: Path) -> None:
-    """Record-level outputs may only be written inside the gitignored data dir (D-15)."""
+    """Record-level outputs may only be written inside the gitignored data dir."""
     if not inside_data_root(path):
         print(
             f"refusing to write record-level output outside the data dir: {path}",
@@ -210,7 +210,7 @@ def pooled_raw_counts() -> pl.DataFrame:
 
 
 def value_table(year_raw: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Per trivial value: per-year counts, raw spellings and value_type (D-01)."""
+    """Per trivial value: per-year counts, raw spellings and value_type."""
     raw_pooled = (
         year_raw.group_by("raw", "value")
         .agg(pl.col("n").sum())
@@ -240,13 +240,13 @@ def value_table(year_raw: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
 
 
 def content_order(values: pl.DataFrame) -> list[str]:
-    """Content values in the clustering visiting order: n_total descending, then value (D-03)."""
+    """Content values in the clustering visiting order: n_total descending, then value."""
     content = values.filter(pl.col("value_type") == "content")
     return content.sort(["n_total", "value"], descending=[True, False])["value"].to_list()
 
 
 def cluster_values(values: pl.DataFrame) -> pl.DataFrame:
-    """Cluster content values (D-03..D-05, D-17); returns value, cluster_id, proposed_standard, confidence."""
+    """Cluster content values ; returns value, cluster_id, proposed_standard, confidence."""
     content = values.filter(pl.col("value_type") == "content")
     mapping, _ = leader_clusters(content_order(values), REF_THRESHOLD)
     assign = pl.DataFrame(
@@ -268,7 +268,7 @@ def cluster_values(values: pl.DataFrame) -> pl.DataFrame:
 
 
 def report_coverage(values: pl.DataFrame, assigned: pl.DataFrame) -> pl.DataFrame:
-    """Print the impact/size FACT lines (D-12); returns the cluster size table."""
+    """Print the impact/size FACT lines; returns the cluster size table."""
     content = values.filter(pl.col("value_type") == "content")
     cluster_n = (
         content.join(assigned.select("value", "cluster_id"), on="value")
@@ -293,7 +293,7 @@ def report_coverage(values: pl.DataFrame, assigned: pl.DataFrame) -> pl.DataFram
 
 
 def report_digit_guard(values: pl.DataFrame) -> None:
-    """Counterfactual FACT lines for the D-17 digit guard: what the unguarded method would do."""
+    """Counterfactual FACT lines for the digit guard: what the unguarded method would do."""
     n_total = dict(zip(values["value"].to_list(), values["n_total"].to_list(), strict=True))
     mapping, leaders = leader_clusters(content_order(values), REF_THRESHOLD, digit_guard=False)
     moved = [v for v, ldr in mapping.items() if digit_runs(v) != digit_runs(ldr)]
@@ -325,7 +325,7 @@ def review_leaders(values: pl.DataFrame, assigned: pl.DataFrame) -> pl.DataFrame
 
 
 def load_lookup(path: Path, leaders: list[str]) -> pl.DataFrame:
-    """Validate the category lookup and return it restricted to review leaders (HARM-03, D-08, D-10).
+    """Validate the category lookup and return it restricted to review leaders.
 
     Called before any output is written, so a bad lookup leaves previous outputs untouched.
     """
@@ -368,13 +368,13 @@ def load_lookup(path: Path, leaders: list[str]) -> pl.DataFrame:
 
 
 def build_mapping(values: pl.DataFrame, assigned: pl.DataFrame, lookup: pl.DataFrame) -> pl.DataFrame:
-    """File A (HARM-02, HARM-03): one row per trivial value, value-level only."""
+    """File A: one row per trivial value, value-level only."""
     return (
         values.join(assigned, on="value", how="left")
         .join(lookup.rename({"leader": "proposed_standard"}), on="proposed_standard", how="left")
         .with_columns(
             (pl.col("cluster_id").is_not_null() & (pl.col("cluster_id") <= TOP_K)).alias("in_review"),
-            # D-10, D-19: the category comes from the leader when the value is not the leader itself.
+            # The category comes from the leader when the value is not the leader itself.
             (pl.col("suggested_category").is_not_null() & (pl.col("value") != pl.col("proposed_standard")))
             .fill_null(False)
             .alias("category_inherited"),
@@ -389,7 +389,7 @@ def build_mapping(values: pl.DataFrame, assigned: pl.DataFrame, lookup: pl.DataF
 
 
 def sample_records(clusters: pl.DataFrame) -> pl.DataFrame:
-    """File B example records (D-13, D-14): up to EXAMPLES_PER_CLUSTER whole records per review cluster.
+    """File B example records: up to EXAMPLES_PER_CLUSTER whole records per review cluster.
 
     `clusters` holds value, cluster_id, proposed_standard for review-cluster content values.
     Records are drawn uniformly at random with the fixed SEED, with no judgement about which
@@ -420,7 +420,7 @@ def sample_records(clusters: pl.DataFrame) -> pl.DataFrame:
 def build_review(
     mapping: pl.DataFrame, raw_pooled: pl.DataFrame, records: pl.DataFrame
 ) -> pl.DataFrame:
-    """File B review table (HARM-04, D-13): one row per review cluster."""
+    """File B review table: one row per review cluster."""
     examples = records.group_by("cluster_id").agg(pl.len().cast(pl.Int64).alias("examples_n"))
     in_review = mapping.filter(pl.col("in_review"))
     stats = in_review.group_by("cluster_id").agg(
@@ -472,7 +472,7 @@ def build_review(
     )
 
 
-RISKY_START = r"^[=+\-@\t\r]"  # a spreadsheet may read such a cell as a formula (D-19, WR-03)
+RISKY_START = r"^[=+\-@\t\r]"  # a spreadsheet may read such a cell as a formula
 
 
 def csv_safe(frame: pl.DataFrame) -> pl.DataFrame:
@@ -490,7 +490,7 @@ def csv_safe(frame: pl.DataFrame) -> pl.DataFrame:
 
 
 def write_csv_bom(frame: pl.DataFrame, target: Path) -> None:
-    """Write a semicolon-separated UTF-8 CSV with BOM via temp file and rename (HARM-04).
+    """Write a semicolon-separated UTF-8 CSV with BOM via temp file and rename.
 
     Cells are escaped in memory (csv_safe) before the temp-file write; the parquet copy is
     written from the unescaped frame by write_outputs.
