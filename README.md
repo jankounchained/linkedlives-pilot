@@ -46,6 +46,42 @@ Outputs are all-String parquet files (nothing is coerced; later scripts cast
 explicitly and report parse failures) under `data/parquet/`:
 
 - `dwi_1846_1850.parquet` (83,414 rows, 22 columns, from the xlsx sheet `MF_census_1850_1846_cl`)
+- `census_1801.parquet`, `census_1850.parquet`, `census_1860.parquet`, `census_1880.parquet`,
+  `census_1901.parquet` (all columns of `census_<year>__v1__cl.csv` from the Digidata zip)
+
+The census files are streamed from `14001.zip` one at a time: only the five census
+CSVs and the Release 2 Guide are read, the rest of the ~10.6 GB release is never
+unpacked, and at most one CSV (up to 675 MB) is on disk at a time. The Guide is
+extracted to `data/raw/digidata_14001/Link_Lives Release 2 Guide (2025).pdf`.
 
 Writes are atomic (temp file renamed into place), so an interrupted run never leaves
 a partial parquet at a final path.
+
+## Data governance
+
+Never enters git: raw source files, the converted parquet files, and any record-level
+output (rows with names, ages, owners, households or `pa_id` values). Committed
+outputs are aggregates only (value-frequency tables, summary statistics, plots), or
+`pa_id` plus aggregates.
+
+Notebooks are committed with outputs (D-02), so their outputs must show aggregates
+only. Two guards back this up:
+
+- `.gitignore` covers `data/`, `*.xlsx`, `*.zip`, `*.csv` and `*.pdf`.
+- A tracked pre-commit hook (`.githooks/pre-commit`) rejects staged paths under
+  `data/` or ending in `.xlsx`, `.zip` or `.pdf`, and scans every staged `.ipynb`
+  with `scripts/check_notebook_outputs.py`. Enable it once per clone (the setting is
+  shared by all worktrees of that clone):
+
+  ```bash
+  git config core.hooksPath .githooks
+  ```
+
+The notebook scanner is a heuristic on table headers; the final check is a human
+read of the rendered outputs. Run it by hand with:
+
+```bash
+python3 -I scripts/check_notebook_outputs.py path/to/notebook.ipynb
+python3 -I scripts/check_notebook_outputs.py --require-empty path/to/notebook.ipynb  # source must carry no outputs
+python3 -I scripts/check_notebook_outputs.py --self-test
+```
