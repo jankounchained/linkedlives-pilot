@@ -25,7 +25,7 @@ findings:
     title: "Main run writes the committed File A before the File B guard runs"
   - id: IN-02
     severity: info
-    disposition: deferred
+    disposition: fixed
     title: "README overstates the digit guard (\"numbers ... never merged\")"
   - id: IN-03
     severity: info
@@ -57,7 +57,7 @@ recorded: 2026-10-18T19:23:07.627Z
 | WR-02 | warning | deferred | deferred (user decision 2026-10-18, hand-in): only an empty or repo-level LINKING_LAB_DATA defeats the guard, and the root README documents an absolute path. Later: ignore empty values and add a git check-ignore test |
 | WR-03 | warning | deferred | deferred (user decision 2026-10-18, hand-in): the D-16 zip carries .git, so the data root resolves to the unzipped folder. Later: only call git when REPO_ROOT/.git exists |
 | IN-01 | info | deferred | deferred (user decision 2026-10-18, hand-in): write order and set atomicity only; each file is still written atomically |
-| IN-02 | info | deferred | deferred (user decision 2026-10-18, hand-in): README wording; the guard compares digit runs, so numbers written as words can still merge |
+| IN-02 | info | fixed | fixed in f60dc92: README says values whose digits differ are never merged, and that numbers written as words can still merge |
 | IN-03 | info | deferred | deferred (user decision 2026-10-18, hand-in): code hygiene, no behaviour change |
 | CR-02 | critical | fixed | fixed in 02-03, 1c611b7: README and 02-01-SUMMARY attribute the single letters s, a, d, b to 1901 and treat 1801 M/K as a separate case (not in the current review) |
 | WR-04 | warning | deferred | deferred (D-19): the guard holds with the default data root (the main checkout's gitignored data/); only a mis-set LINKING_LAB_DATA defeats it (not in the current review) |
