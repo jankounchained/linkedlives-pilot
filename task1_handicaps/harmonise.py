@@ -47,6 +47,10 @@ MAPPING_PATH = TASK_DIR / "outputs" / "handicaps_mapping.parquet"
 REVIEW_DIR = pp.OUTPUTS_DIR / "task1"
 REVIEW_PATH = REVIEW_DIR / "handicaps_review.parquet"
 REVIEW_CSV = REVIEW_DIR / "handicaps_review.csv"
+RECORDS_PATH = REVIEW_DIR / "handicaps_review_records.parquet"
+RECORDS_CSV = REVIEW_DIR / "handicaps_review_records.csv"
+CSV_SEPARATOR = ";"  # Danish-locale Excel splits on semicolons; UTF-8 with BOM keeps æ, ø, å intact
+CSV_BOM = b"\xef\xbb\xbf"
 LOOKUP_PATH = TASK_DIR / "category_suggestions.parquet"
 LEADERS_PATH = REVIEW_DIR / "review_leaders.parquet"
 
@@ -333,8 +337,40 @@ def build_mapping(values: pl.DataFrame, assigned: pl.DataFrame, lookup: pl.DataF
     )
 
 
-def build_review(mapping: pl.DataFrame, raw_pooled: pl.DataFrame) -> pl.DataFrame:
+def sample_records(clusters: pl.DataFrame) -> pl.DataFrame:
+    """File B example records (D-13, D-14): up to EXAMPLES_PER_CLUSTER whole records per review cluster.
+
+    `clusters` holds value, cluster_id, proposed_standard for review-cluster content values.
+    Records are drawn uniformly at random with the fixed SEED, with no judgement about which
+    are typical. Whole census records: the output must stay inside the gitignored data dir.
+    """
+    parts = []
+    for y in YEARS:
+        parts.append(
+            pl.scan_parquet(pp.census_parquet(y))
+            .filter(filled("handicaps"))
+            .with_columns(trivial_norm(pl.col("handicaps")).alias("_value"))
+            .join(clusters.lazy(), left_on="_value", right_on="value", how="inner")
+            .with_columns(pl.lit(y, dtype=pl.Int64).alias("year"))
+            .drop("_value")
+            .collect()
+        )
+    records = pl.concat(parts, how="diagonal_relaxed")
+    lead = ["cluster_id", "proposed_standard", "year", "pa_id", "handicaps"]
+    ordered = lead + [c for c in records.columns if c not in lead]
+    return (
+        records.select(ordered)
+        .sort(["cluster_id", "year", "pa_id"])
+        .filter(pl.int_range(pl.len()).shuffle(seed=SEED).over("cluster_id") < EXAMPLES_PER_CLUSTER)
+        .sort(["cluster_id", "year", "pa_id"])
+    )
+
+
+def build_review(
+    mapping: pl.DataFrame, raw_pooled: pl.DataFrame, records: pl.DataFrame
+) -> pl.DataFrame:
     """File B review table (HARM-04, D-13): one row per review cluster."""
+    examples = records.group_by("cluster_id").agg(pl.len().cast(pl.Int64).alias("examples_n"))
     in_review = mapping.filter(pl.col("in_review"))
     stats = in_review.group_by("cluster_id").agg(
         pl.col("proposed_standard").first(),
@@ -357,6 +393,8 @@ def build_review(mapping: pl.DataFrame, raw_pooled: pl.DataFrame) -> pl.DataFram
     )
     return (
         stats.join(spell, on="cluster_id")
+        .join(examples, on="cluster_id", how="left")
+        .with_columns(pl.col("examples_n").fill_null(0))
         .with_columns(
             pl.lit("").alias("decision"),
             pl.lit("").alias("comment"),
@@ -371,6 +409,7 @@ def build_review(mapping: pl.DataFrame, raw_pooled: pl.DataFrame) -> pl.DataFram
             "merged_spellings",
             "confidence_mean",
             "confidence_min",
+            "examples_n",
             "suggested_category",
             "category_source",
             "decision",
@@ -380,12 +419,31 @@ def build_review(mapping: pl.DataFrame, raw_pooled: pl.DataFrame) -> pl.DataFram
     )
 
 
-def write_outputs(mapping: pl.DataFrame, review: pl.DataFrame) -> None:
+def write_csv_bom(frame: pl.DataFrame, target: Path) -> None:
+    """Write a semicolon-separated UTF-8 CSV with BOM via temp file and rename (HARM-04)."""
+    assert_local_only(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _tmp_path(target)
+    try:
+        tmp.write_bytes(CSV_BOM + frame.write_csv(separator=CSV_SEPARATOR).encode("utf-8"))
+        tmp.replace(target)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def write_outputs(mapping: pl.DataFrame, review: pl.DataFrame, records: pl.DataFrame) -> None:
     write_atomic(mapping, MAPPING_PATH)
     print(f"wrote {MAPPING_PATH} rows={mapping.height}")
-    assert_local_only(REVIEW_PATH)
-    write_atomic(review, REVIEW_PATH)
-    print(f"wrote {REVIEW_PATH} rows={review.height}")
+    for frame, parquet_path, csv_path in (
+        (review, REVIEW_PATH, REVIEW_CSV),
+        (records, RECORDS_PATH, RECORDS_CSV),
+    ):
+        assert_local_only(parquet_path)
+        write_atomic(frame, parquet_path)
+        print(f"wrote {parquet_path} rows={frame.height}")
+        write_csv_bom(frame, csv_path)
+        print(f"wrote {csv_path} rows={frame.height}")
 
 
 # --- check -----------------------------------------------------------------------
@@ -412,7 +470,7 @@ def check_outputs(lookup_path: Path) -> int:
         failed += 0 if ok else 1
         print(f"{'OK' if ok else 'FAIL'} {name} {detail}".rstrip())
 
-    for p in (MAPPING_PATH, REVIEW_PATH):
+    for p in (MAPPING_PATH, REVIEW_PATH, REVIEW_CSV, RECORDS_PATH, RECORDS_CSV):
         if not p.exists():
             report(False, p.name, "missing (run the script first)")
     if failed:
@@ -478,6 +536,38 @@ def check_outputs(lookup_path: Path) -> int:
     )
     report(r["suggested_category"].null_count() == 0, "review_suggestions_complete")
     check_lookup(lookup_path, report, r)
+
+    rec = pl.read_parquet(RECORDS_PATH)
+    report(
+        rec.columns[:5] == ["cluster_id", "proposed_standard", "year", "pa_id", "handicaps"],
+        "records_columns",
+        f"cols={rec.width}",
+    )
+    # pa_id identifies a record within one census year; a pa_id string can recur across years.
+    report(
+        rec.select(["year", "pa_id"]).unique().height == rec.height,
+        "records_year_pa_id_unique",
+        f"rows={rec.height} pa_id_repeated_across_years={rec.height - rec['pa_id'].n_unique()}",
+    )
+    report(set(rec["cluster_id"].to_list()) <= set(r["cluster_id"].to_list()), "records_clusters_are_review")
+    per_cluster = rec.group_by("cluster_id").agg(pl.len().cast(pl.Int64).alias("k"))
+    cmp = r.select("cluster_id", "n_total", "examples_n").join(per_cluster, on="cluster_id", how="left")
+    report(
+        cmp.select(
+            (pl.col("k").fill_null(0) == pl.min_horizontal(pl.col("n_total"), pl.lit(EXAMPLES_PER_CLUSTER)))
+            & (pl.col("k").fill_null(0) == pl.col("examples_n"))
+        )
+        .to_series()
+        .all(),
+        "records_per_cluster_is_min_5_n_total",
+    )
+    for p in (REVIEW_CSV, RECORDS_CSV):
+        with p.open("rb") as fh:
+            report(fh.read(3) == CSV_BOM, f"{p.name}_bom")
+    report(
+        all(inside_data_root(p) for p in (RECORDS_PATH, REVIEW_CSV, RECORDS_CSV)),
+        "file_b_inside_data_root",
+    )
     return 1 if failed else 0
 
 
@@ -527,8 +617,14 @@ def main() -> int:
     fact("category.labels_used", with_suggestion["suggested_category"].n_unique())
     fact("category.values", with_suggestion.height)
     fact("category.record_share", int(with_suggestion["n_total"].sum()) / content_records)
-    review = build_review(mapping, raw_pooled)
-    write_outputs(mapping, review)
+    review_values = assigned.filter(pl.col("cluster_id") <= TOP_K).select(
+        "value", "cluster_id", "proposed_standard"
+    )
+    records = sample_records(review_values)
+    review = build_review(mapping, raw_pooled, records)
+    fact("examples.records", records.height)
+    fact("examples.clusters_lt5", review.filter(pl.col("n_total") < EXAMPLES_PER_CLUSTER).height)
+    write_outputs(mapping, review, records)
     return 0
 
 
