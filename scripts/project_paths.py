@@ -5,7 +5,7 @@ git worktree, where data/ does not exist, so the data root is resolved through t
 common git dir, which always points at the main checkout. Override with the
 LINKING_LAB_DATA environment variable (absolute path of the data directory).
 
-CLI: python scripts/project_paths.py [data|raw|parquet|rendered]
+CLI: python scripts/project_paths.py [data|raw|parquet|rendered|outputs]
 prints that absolute directory (default: data) and nothing else on stdout.
 """
 
@@ -49,6 +49,7 @@ LINKING_LAB_DIR = RAW_DIR / "linking_lab"
 DWI_XLSX = LINKING_LAB_DIR / "MF_census_1850_1846_cl.xlsx"
 DWI_SHEET = "MF_census_1850_1846_cl"
 PARQUET_DIR = DATA_ROOT / "parquet"
+OUTPUTS_DIR = DATA_ROOT / "outputs"
 RENDERED_DIR = DATA_ROOT / "rendered"
 DWI_PARQUET = PARQUET_DIR / "dwi_1846_1850.parquet"
 
@@ -66,6 +67,7 @@ _CLI_DIRS = {
     "raw": RAW_DIR,
     "parquet": PARQUET_DIR,
     "rendered": RENDERED_DIR,
+    "outputs": OUTPUTS_DIR,
 }
 
 if __name__ == "__main__":
