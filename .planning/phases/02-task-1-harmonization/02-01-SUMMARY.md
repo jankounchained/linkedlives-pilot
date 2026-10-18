@@ -141,7 +141,7 @@ Leaders per label in `task1_handicaps/category_suggestions.parquet` (300 rows), 
 | sindssyg | 13 | 5,566 |
 | krøbling/vanfør | 10 | 438 |
 
-Note that "other/unclear" holds 5,237 records, mostly the 1801 single-letter codes (`s`, `a`, `d`, `b`, ...). "not a condition" is large in leaders but small in records.
+Note that "other/unclear" holds 5,237 records, mostly the bare single letters `s`, `a`, `d` and `b`. These are 1901 values (1,767, 1,421, 336 and 282 records in 1901); 1801 holds only `m` and `k` (86 records). "not a condition" is large in leaders but small in records. (corrected in 02-03, review CR-02)
 
 ## Task Commits
 
@@ -204,7 +204,7 @@ None - no external service configuration required.
 
 - Plan 02-02 (README) can quote every number from the FACT lines above; the figure drift note (1,652 and 284) needs to be reflected there.
 - Phase 4 zip must include `data/outputs/` and exclude `data/raw/` and `data/parquet/` (D-16). File B currently lives in the main checkout's `data/outputs/task1/`.
-- Candidate README findings: `pa_id` repeats across years; the "not a condition" label also holds explicit negations; "other/unclear" is dominated by 1801 single-letter codes.
+- Candidate README findings: `pa_id` repeats across years; the "not a condition" label also holds explicit negations; "other/unclear" is dominated by the 1901 single letters `s`, `a`, `d` and `b` (1,767, 1,421, 336 and 282 records in 1901); 1801 holds only `m` and `k` (86 records). (corrected in 02-03, review CR-02)
 
 ## Self-Check: PASSED
 

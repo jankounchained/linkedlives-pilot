@@ -56,7 +56,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. The decisions made after the EDA are recorded in PROJECT.md Key Decisions before the scripts are written: the Task 1 method, the impact definition (written by the user) and the LLM/embedding scope. The outputs follow these decisions.
   2. Running the Task 1 script(s) regenerates `handicaps_mapping.parquet`. It has one row per distinct, automatically spelling-normalised value (case, punctuation, whitespace, variant spellings) with per-year frequency, a proposed standard value, a confidence, and a category column clearly marked as a suggestion for historians.
-  3. Values that differ in wording rather than spelling (e.g. "blind" vs "svagsynet") are grouped under the nearest frequent anchor, with cosine similarity as the confidence. This applies within the scope the user confirmed after the EDA. The output stays a suggestion, and the modern-meaning-bias caveat is documented.
+  3. Values that differ in wording rather than spelling (e.g. "blind" vs "svagsynet") are not grouped in this iteration: the scope confirmed after the EDA is zero (D-07, D-18). The Task 1 README documents embedding-based grouping as a next step and carries the modern-meaning-bias caveat.
   4. `handicaps_review.parquet` and its CSV export hold the review subset chosen by the user's impact definition. Its size is calculated from the brief's 100–120 records/hour × 2–3 hours/day, with the arithmetic shown. It has empty `decision` and `comment` columns.
   5. A reviewer can follow the Task 1 README (in its subdirectory) from EDA findings through assumptions, decisions, conclusions and next steps without opening the code.
 

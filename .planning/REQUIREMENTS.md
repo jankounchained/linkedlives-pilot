@@ -27,7 +27,7 @@ Requirements for the hand-in (deadline 23:59 2026-10-18). Each maps to a roadmap
 - [ ] **HARM-03**: File A carries a *suggested* category per value, clearly marked as suggestion for historians (method decided after EDA)
 - [ ] **HARM-04**: File B `handicaps_review.parquet` (+ CSV export) is the review subset for Asbjørn — selected by impact (definition written by the user), sized from the brief's 100–120 records/hour, with empty `decision` and `comment` columns
 - [ ] **HARM-05**: Task 1 README gives the overview — EDA findings, assumptions, decisions, conclusions, next steps
-- [ ] **HARM-06**: Values that differ in wording rather than spelling (e.g. "blind" vs "svagsynet") are grouped via embedding similarity of normalised values (nearest frequent anchor, cosine similarity as confidence; optional 2D projection in the EDA notebook); output stays a suggestion; caveat on modern-meaning bias documented. Scope confirmed after EDA
+- [ ] **HARM-06**: Values that differ in wording rather than spelling (e.g. "blind" vs "svagsynet"): scope confirmed after the EDA is zero (Phase 2 D-07, D-18). No embedding grouping is built in this iteration; the Task 1 README documents embedding-similarity grouping (nearest frequent anchor, cosine similarity as confidence) as a next step, with the modern-meaning-bias caveat.
 
 ### Task 2 — Linking
 
