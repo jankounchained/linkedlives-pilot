@@ -84,6 +84,7 @@ MAPPING_COLUMNS = [
     "in_review",
     "suggested_category",
     "category_source",
+    "category_inherited",
 ]
 
 
@@ -338,6 +339,14 @@ def load_lookup(path: Path, leaders: list[str]) -> pl.DataFrame:
     if lookup.columns != LOOKUP_COLUMNS:
         print(f"category lookup columns {lookup.columns} != {LOOKUP_COLUMNS}", file=sys.stderr)
         sys.exit(2)
+    nulls = int(sum(lookup.null_count().row(0)))
+    if nulls:
+        print(f"category lookup has {nulls} null cells", file=sys.stderr)
+        sys.exit(2)
+    duplicated = lookup.filter(pl.col("leader").is_duplicated()).height
+    if duplicated:
+        print(f"category lookup has {duplicated} duplicated leaders", file=sys.stderr)
+        sys.exit(2)
     bad = lookup.filter(~pl.col("suggested_category").is_in(CATEGORY_LABELS)).height
     if bad:
         print(f"category lookup has {bad} rows with a label outside CATEGORY_LABELS", file=sys.stderr)
@@ -355,7 +364,7 @@ def load_lookup(path: Path, leaders: list[str]) -> pl.DataFrame:
         sys.exit(2)
     fact("lookup.missing", len(missing))
     fact("lookup.unused", len(have - set(leaders)))
-    return lookup.filter(pl.col("leader").is_in(leaders)).unique(subset="leader")
+    return lookup.filter(pl.col("leader").is_in(leaders))
 
 
 def build_mapping(values: pl.DataFrame, assigned: pl.DataFrame, lookup: pl.DataFrame) -> pl.DataFrame:
@@ -365,6 +374,10 @@ def build_mapping(values: pl.DataFrame, assigned: pl.DataFrame, lookup: pl.DataF
         .join(lookup.rename({"leader": "proposed_standard"}), on="proposed_standard", how="left")
         .with_columns(
             (pl.col("cluster_id").is_not_null() & (pl.col("cluster_id") <= TOP_K)).alias("in_review"),
+            # D-10, D-19: the category comes from the leader when the value is not the leader itself.
+            (pl.col("suggested_category").is_not_null() & (pl.col("value") != pl.col("proposed_standard")))
+            .fill_null(False)
+            .alias("category_inherited"),
         )
         .select(MAPPING_COLUMNS)
         .sort(
@@ -419,6 +432,7 @@ def build_review(
         pl.col("confidence").min().alias("confidence_min"),
         pl.col("suggested_category").first(),
         pl.col("category_source").first(),
+        pl.col("category_inherited").any(),
     )
     spell = (
         raw_pooled.join(in_review.select("value", "cluster_id"), on="value")
@@ -450,6 +464,7 @@ def build_review(
             "examples_n",
             "suggested_category",
             "category_source",
+            "category_inherited",
             "decision",
             "comment",
         )
@@ -457,13 +472,34 @@ def build_review(
     )
 
 
+RISKY_START = r"^[=+\-@\t\r]"  # a spreadsheet may read such a cell as a formula (D-19, WR-03)
+
+
+def csv_safe(frame: pl.DataFrame) -> pl.DataFrame:
+    """CSV copy only: prefix a single quote to String cells that start with = + - @ tab or CR."""
+    return frame.with_columns(
+        [
+            pl.when(pl.col(c).str.contains(RISKY_START))
+            .then(pl.concat_str(pl.lit("'"), pl.col(c)))
+            .otherwise(pl.col(c))
+            .alias(c)
+            for c, dtype in frame.schema.items()
+            if dtype == pl.String
+        ]
+    )
+
+
 def write_csv_bom(frame: pl.DataFrame, target: Path) -> None:
-    """Write a semicolon-separated UTF-8 CSV with BOM via temp file and rename (HARM-04)."""
+    """Write a semicolon-separated UTF-8 CSV with BOM via temp file and rename (HARM-04).
+
+    Cells are escaped in memory (csv_safe) before the temp-file write; the parquet copy is
+    written from the unescaped frame by write_outputs.
+    """
     assert_local_only(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = _tmp_path(target)
     try:
-        tmp.write_bytes(CSV_BOM + frame.write_csv(separator=CSV_SEPARATOR).encode("utf-8"))
+        tmp.write_bytes(CSV_BOM + csv_safe(frame).write_csv(separator=CSV_SEPARATOR).encode("utf-8"))
         tmp.replace(target)
     except BaseException:
         tmp.unlink(missing_ok=True)
@@ -493,11 +529,26 @@ def check_lookup(path: Path, report, review: pl.DataFrame) -> None:
         return
     lk = pl.read_parquet(path)
     report(lk.columns == LOOKUP_COLUMNS, "lookup_columns", f"cols={lk.width}")
-    report(lk["suggested_category"].is_in(CATEGORY_LABELS).all(), "lookup_labels_in_vocabulary")
-    report(lk["category_source"].eq(CATEGORY_SOURCE).all(), "lookup_category_source")
-    covered = set(lk["leader"].to_list())
-    missing = [ldr for ldr in review["proposed_standard"].to_list() if ldr not in covered]
-    report(not missing, "lookup_covers_review_leaders", f"missing={len(missing)}")
+    nulls = int(sum(lk.null_count().row(0)))
+    report(nulls == 0, "lookup_no_nulls", f"nulls={nulls}")
+    duplicated = lk.filter(pl.col("leader").is_duplicated()).height
+    report(duplicated == 0, "lookup_leaders_unique", f"duplicated={duplicated}")
+    report(
+        bool(lk["suggested_category"].is_in(CATEGORY_LABELS).fill_null(False).all()),
+        "lookup_labels_in_vocabulary",
+    )
+    report(
+        bool(lk["category_source"].eq(CATEGORY_SOURCE).fill_null(False).all()),
+        "lookup_category_source",
+    )
+    have = set(lk["leader"].to_list())
+    wanted = set(review["proposed_standard"].to_list())
+    missing, unused = len(wanted - have), len(have - wanted)
+    report(
+        missing == 0 and unused == 0,
+        "lookup_leaders_equal_review_leaders",
+        f"missing={missing} unused={unused}",
+    )
 
 
 def check_outputs(lookup_path: Path) -> int:
@@ -578,6 +629,28 @@ def check_outputs(lookup_path: Path) -> int:
         "category_source_llm_or_null",
     )
     report(r["suggested_category"].null_count() == 0, "review_suggestions_complete")
+    expected_inherited = a.select(
+        (pl.col("suggested_category").is_not_null() & (pl.col("value") != pl.col("proposed_standard")))
+        .fill_null(False)
+        .alias("e")
+    )["e"]
+    per_cluster_inherited = (
+        a.filter(pl.col("in_review"))
+        .group_by("cluster_id")
+        .agg(pl.col("category_inherited").any().alias("e"))
+    )
+    review_cmp = r.select("cluster_id", "category_inherited").join(
+        per_cluster_inherited, on="cluster_id", how="full", coalesce=True
+    )
+    report(
+        a["category_inherited"].null_count() == 0
+        and a["category_inherited"].equals(expected_inherited, check_names=False)
+        and r["category_inherited"].null_count() == 0
+        and review_cmp.height == r.height
+        and bool(review_cmp.select((pl.col("category_inherited") == pl.col("e")).all()).item()),
+        "category_inherited_consistent",
+        f"inherited_values={int(a['category_inherited'].sum())}",
+    )
     check_lookup(lookup_path, report, r)
 
     rec = pl.read_parquet(RECORDS_PATH)
@@ -607,6 +680,9 @@ def check_outputs(lookup_path: Path) -> int:
     for p in (REVIEW_CSV, RECORDS_CSV):
         with p.open("rb") as fh:
             report(fh.read(3) == CSV_BOM, f"{p.name}_bom")
+        cells = pl.read_csv(p, separator=CSV_SEPARATOR, infer_schema_length=0)
+        unsafe = sum(int(cells[c].drop_nulls().str.contains(RISKY_START).sum()) for c in cells.columns)
+        report(unsafe == 0, f"{p.name}_cells_safe", f"unsafe={unsafe}")
     report(
         all(inside_data_root(p) for p in (RECORDS_PATH, REVIEW_CSV, RECORDS_CSV)),
         "file_b_inside_data_root",
@@ -661,6 +737,13 @@ def main() -> int:
     fact("category.labels_used", with_suggestion["suggested_category"].n_unique())
     fact("category.values", with_suggestion.height)
     fact("category.record_share", int(with_suggestion["n_total"].sum()) / content_records)
+    fact("category.inherited_values", int(mapping["category_inherited"].sum()))
+    for label in CATEGORY_LABELS:
+        fact(f"category.leaders.{label}", lookup.filter(pl.col("suggested_category") == label).height)
+        fact(
+            f"category.records.{label}",
+            int(with_suggestion.filter(pl.col("suggested_category") == label)["n_total"].sum()),
+        )
     review_values = assigned.filter(pl.col("cluster_id") <= TOP_K).select(
         "value", "cluster_id", "proposed_standard"
     )
