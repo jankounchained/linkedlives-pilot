@@ -5,24 +5,36 @@ titles: json
 findings:
   - id: CR-01
     severity: critical
-    disposition: fixed
-    title: "Clustering merges values that differ only in digits, so proposed_standard states a wrong number at high confidence"
+    disposition: open
+    title: "Committed File A ships verbatim free-text census strings, including personal narrative and a surname"
+  - id: WR-01
+    severity: warning
+    disposition: open
+    title: "`load_lookup` silently drops stale leaders that `--check` later rejects"
+  - id: WR-02
+    severity: warning
+    disposition: open
+    title: "Record-level output guard can be defeated by an empty or repo-level `LINKING_LAB_DATA` (re-raise of deferred WR-04, with reproduction)"
+  - id: WR-03
+    severity: warning
+    disposition: open
+    title: "`main_checkout_root` can resolve the data root to an unrelated parent repository (re-raise of deferred WR-05, delivery path)"
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "Main run writes the committed File A before the File B guard runs"
+  - id: IN-02
+    severity: info
+    disposition: open
+    title: "README overstates the digit guard (\"numbers ... never merged\")"
+  - id: IN-03
+    severity: info
+    disposition: open
+    title: "Private cross-module import and stale suppression"
   - id: CR-02
     severity: critical
     disposition: fixed
     title: "README misattributes the single-letter codes to 1801 (false finding in the deliverable)"
-  - id: WR-01
-    severity: warning
-    disposition: fixed
-    title: "load_lookup and check_lookup validation lets null labels and conflicting duplicates through"
-  - id: WR-02
-    severity: warning
-    disposition: fixed
-    title: "Merged members inherit the leader's category even when they name a different condition"
-  - id: WR-03
-    severity: warning
-    disposition: fixed
-    title: "CSV formula injection in the historian CSV files"
   - id: WR-04
     severity: warning
     disposition: deferred
@@ -31,33 +43,26 @@ findings:
     severity: warning
     disposition: deferred
     title: "main_checkout_root assumes the common git dir is named .git, directly under the checkout"
-  - id: IN-01
-    severity: info
-    disposition: deferred
-    title: "Dead or misleading FACT lines and stale lint suppression"
-  - id: IN-02
-    severity: info
-    disposition: deferred
-    title: "Example sampling reuses the same permutation for every cluster of equal size"
-  - id: IN-03
-    severity: info
-    disposition: fixed
-    title: "--check does not test the README or the lookup against the actual clustering"
+open: 7
+total: 10
+recorded: 2026-10-18T19:23:07.627Z
 ---
 
-# Phase 02 code review disposition
-
-10 findings: 6 fixed in plan 02-03, 4 deferred (D-19)
+# Phase 02: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | fixed | fixed in 02-03, 56f2eb5: D-17 digit guard in leader_clusters; `--check` digit_runs_match_leader violations=0 |
-| CR-02 | critical | fixed | fixed in 02-03, 1c611b7: README and 02-01-SUMMARY attribute the single letters s, a, d, b to 1901 and treat 1801 M/K as a separate case |
-| WR-01 | warning | fixed | fixed in 02-03, 4d8c6e8: load_lookup exits 2 on null cells or duplicated leaders; check_lookup tests both |
-| WR-02 | warning | fixed | fixed in 02-03, 4d8c6e8: `category_inherited` in File A and the review table |
-| WR-03 | warning | fixed | fixed in 02-03, 4d8c6e8: csv_safe escapes risky leading characters in the CSV copies only; `--check` cells_safe |
-| WR-04 | warning | deferred | deferred (D-19): the guard holds with the default data root (the main checkout's gitignored data/); only a mis-set LINKING_LAB_DATA defeats it |
-| WR-05 | warning | deferred | deferred (D-19): the project runs from plain checkouts and git worktrees, where the common git dir is .git |
-| IN-01 | info | deferred | deferred (D-19): cosmetic (always-zero FACT, stale noqa, wording); no effect on outputs |
-| IN-02 | info | deferred | deferred (D-19): sampling stays uniform within each cluster and reproducible; the cross-cluster correlation biases no cluster's examples |
-| IN-03 | info | fixed | fixed in 02-03, 4d8c6e8: `--check` lookup_leaders_equal_review_leaders compares the sets in both directions |
+| CR-01 | critical | open | - |
+| WR-01 | warning | open | - |
+| WR-02 | warning | open | - |
+| WR-03 | warning | open | - |
+| IN-01 | info | open | - |
+| IN-02 | info | open | - |
+| IN-03 | info | open | - |
+| CR-02 | critical | fixed | fixed in 02-03, 1c611b7: README and 02-01-SUMMARY attribute the single letters s, a, d, b to 1901 and treat 1801 M/K as a separate case (not in the current review) |
+| WR-04 | warning | deferred | deferred (D-19): the guard holds with the default data root (the main checkout's gitignored data/); only a mis-set LINKING_LAB_DATA defeats it (not in the current review) |
+| WR-05 | warning | deferred | deferred (D-19): the project runs from plain checkouts and git worktrees, where the common git dir is .git (not in the current review) |
+
+Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
+Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
+Re-running the gate keeps every row it can. A row the current review no longer reports is kept and its Source cell flagged, so a finding does not leave this record silently. ONE exception: when a finding id is REUSED by a different finding, the earlier decision cannot keep a row — the id is taken — and it is dropped. A RECORDED decision (anything but `open`) is named on the console when that happens; a row still at `open` is replaced silently, because `open` records no decision to lose.
