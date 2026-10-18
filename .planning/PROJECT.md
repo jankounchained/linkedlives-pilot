@@ -79,15 +79,15 @@ Show sound, transparent, source-critical problem solving on realistic HisPeR dat
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Phase 1 = context & EDA before planning task solutions | Columns and missingness not yet understood; approaches depend on it | — Pending |
-| Private git repo; invite vs zip decided later | Data partner terms; Outlook blocks .py | — Pending |
+| Private git repo; invite vs zip decided later | Data partner terms; Outlook blocks .py | Decided 2026-10-18: zipped repo built from the working tree; includes local `data/outputs/` (record-level File B) without committing it; excludes `data/raw/` and `data/parquet/` (Phase 2 D-16) |
 | Commit `.planning/` and mention AI use in README | Transparency; mirrors the brief's own gen-AI footnote | — Pending |
 | One EDA notebook per task | Each task's story self-contained | — Pending |
 | Task READMEs = overview incl. EDA, assumptions, decisions, conclusions; root README links to them | One place per task for reviewers | — Pending |
 | Task 1: two levels — spelling normalisation (automatic) vs category (suggested, historian decides) | Terminology of illness/disability changed over time; domain expertise stays at the core | — Pending |
 | Task 1: File A (full mapping) + File B (review subset for Asbjørn) | Turns thousands of raw values into a bounded review task | — Pending |
-| File B selection "by impact" — user formulates the exact definition | User's call | — Pending |
-| LLM-suggested categories for Task 1 | Decide after EDA, depending on how messy values are | — Pending |
-| Task 1 approach (scripts, normalisation/clustering method) | Depends on EDA | — Pending |
+| File B selection "by impact" — user formulates the exact definition | User's call | Decided: impact = number of real-content records a cluster's decision standardises (pooled count, placeholders excluded); size fixed at one reviewer-day = 300 clusters (120/h × 2.5h); one row per cluster plus 5 seeded-random whole example records per cluster, kept local (Phase 2 D-11..D-15) |
+| LLM-suggested categories for Task 1 | Decide after EDA, depending on how messy values are | Decided: yes, for the 300 File B clusters only; produced once by Claude, committed as an auditable lookup (no runtime API); historical source vocabulary, not modern groups. HARM-06 embeddings descoped to next steps (modern-meaning bias, heavy dependency, extra threshold) (Phase 2 D-07..D-10) |
+| Task 1 approach (scripts, normalisation/clustering method) | Depends on EDA | Decided: minimise analyst degrees of freedom. Trivial normalisation + greedy leader clustering at fuzz.ratio ≥ 85 (EDA method); leader = proposed standard; confidence = ratio/100; only placeholder rule = no letters; no keyword lists, no prefix stripping, no misplaced-value flag (Phase 2 D-01..D-06) |
 | Task 2: hand-rolled scoring (additive log-weights, given-name agreement weighted by name frequency) | Shows own design; transparent and explainable | — Pending |
 | Task 2: blocking on sex + birth-year window; window width set from EDA age noise | Sex is nearly certain; sex alone ≈ 800M pairs; wide year window is not a hard gate | — Pending |
 | Task 2: no phonetic key; name similarity is a score feature | Phonetic key would be load-bearing and silently lose links | — Pending |
