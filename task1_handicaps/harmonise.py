@@ -4,7 +4,7 @@ Run: uv run python task1_handicaps/harmonise.py [--check]
 
 Pools the `handicaps` column of the five census parquet files (1801, 1850, 1860,
 1880, 1901), trivially normalises each value, clusters the content values by
-fuzzy similarity (Phase 1 EDA method, unchanged) and writes:
+fuzzy similarity (Phase 1 EDA method plus the D-17 digit guard) and writes:
 
 - File A, task1_handicaps/outputs/handicaps_mapping.parquet (committed): one row
   per distinct trivially normalised value, value-level only, no records.
@@ -20,6 +20,7 @@ The script prints only paths, counts and FACT lines, never rows.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -31,7 +32,7 @@ import project_paths as pp  # noqa: E402
 from prepare_data import _tmp_path, write_atomic  # noqa: E402,F401
 
 YEARS = pp.CENSUS_YEARS
-REF_THRESHOLD = 85  # Phase 1 EDA value (D-03)
+REF_THRESHOLD = 85  # Phase 1 EDA value (D-03), unchanged by the D-17 digit guard
 
 # Review capacity (D-12): one reviewer-day from the brief's 100-120 records/h x 2-3 h.
 RECORDS_PER_HOUR = 120
@@ -83,6 +84,7 @@ MAPPING_COLUMNS = [
     "in_review",
     "suggested_category",
     "category_source",
+    "category_inherited",
 ]
 
 
@@ -108,18 +110,35 @@ def fact(key: str, value) -> None:
     print(f"FACT {PREFIX}{key}={value}")
 
 
-def leader_clusters(values: list[str], threshold: int) -> tuple[dict[str, str], list[str]]:
-    """Greedy leader clustering: each value joins the best leader at ratio >= threshold."""
+def digit_runs(s: str) -> tuple[str, ...]:
+    """Maximal runs of the digits 0-9 in s, kept as strings (D-17)."""
+    return tuple(re.findall(r"\d+", s))
+
+
+def leader_clusters(
+    values: list[str], threshold: int, digit_guard: bool = True
+) -> tuple[dict[str, str], list[str]]:
+    """Greedy leader clustering: each value joins the best leader at ratio >= threshold.
+
+    D-17 digit guard: with digit_guard true, a value may only join a leader whose digit runs
+    are identical to its own (candidates in leader-creation order); otherwise it becomes a
+    new leader. fuzz.ratio treats digits like letters, so without the guard values stating a
+    different age or duration merge. No parameter: exact equality of the digit runs.
+    digit_guard=False is the unguarded Phase 1 method, kept for the counterfactual only.
+    """
     leaders: list[str] = []
+    by_digits: dict[tuple[str, ...], list[str]] = {}
     mapping: dict[str, str] = {}
     for v in values:
+        candidates = by_digits.get(digit_runs(v), []) if digit_guard else leaders
         match = (
-            process.extractOne(v, leaders, scorer=fuzz.ratio, score_cutoff=threshold)
-            if leaders
+            process.extractOne(v, candidates, scorer=fuzz.ratio, score_cutoff=threshold)
+            if candidates
             else None
         )
         if match is None:
             leaders.append(v)
+            by_digits.setdefault(digit_runs(v), []).append(v)
             mapping[v] = v
         else:
             mapping[v] = match[0]
@@ -220,11 +239,16 @@ def value_table(year_raw: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     return values, raw_pooled
 
 
-def cluster_values(values: pl.DataFrame) -> pl.DataFrame:
-    """Cluster content values (D-03..D-05); returns value, cluster_id, proposed_standard, confidence."""
+def content_order(values: pl.DataFrame) -> list[str]:
+    """Content values in the clustering visiting order: n_total descending, then value (D-03)."""
     content = values.filter(pl.col("value_type") == "content")
-    order = content.sort(["n_total", "value"], descending=[True, False])["value"].to_list()
-    mapping, _ = leader_clusters(order, REF_THRESHOLD)
+    return content.sort(["n_total", "value"], descending=[True, False])["value"].to_list()
+
+
+def cluster_values(values: pl.DataFrame) -> pl.DataFrame:
+    """Cluster content values (D-03..D-05, D-17); returns value, cluster_id, proposed_standard, confidence."""
+    content = values.filter(pl.col("value_type") == "content")
+    mapping, _ = leader_clusters(content_order(values), REF_THRESHOLD)
     assign = pl.DataFrame(
         {
             "value": list(mapping),
@@ -268,6 +292,21 @@ def report_coverage(values: pl.DataFrame, assigned: pl.DataFrame) -> pl.DataFram
     return cluster_n
 
 
+def report_digit_guard(values: pl.DataFrame) -> None:
+    """Counterfactual FACT lines for the D-17 digit guard: what the unguarded method would do."""
+    n_total = dict(zip(values["value"].to_list(), values["n_total"].to_list(), strict=True))
+    mapping, leaders = leader_clusters(content_order(values), REF_THRESHOLD, digit_guard=False)
+    moved = [v for v, ldr in mapping.items() if digit_runs(v) != digit_runs(ldr)]
+    per_leader: dict[str, int] = {}
+    for v, ldr in mapping.items():
+        per_leader[ldr] = per_leader.get(ldr, 0) + n_total[v]
+    curve = cum_share(list(per_leader.values()))
+    fact("digit_guard.clusters_unguarded", len(leaders))
+    fact("digit_guard.values_moved", len(moved))
+    fact("digit_guard.records_moved", sum(n_total[v] for v in moved))
+    fact(f"digit_guard.coverage.top{TOP_K}_unguarded", coverage_at(curve, TOP_K))
+
+
 def review_leaders(values: pl.DataFrame, assigned: pl.DataFrame) -> pl.DataFrame:
     """Value-level worksheet, one row per review cluster: cluster_id, leader, n_total, merged_values."""
     return (
@@ -300,6 +339,14 @@ def load_lookup(path: Path, leaders: list[str]) -> pl.DataFrame:
     if lookup.columns != LOOKUP_COLUMNS:
         print(f"category lookup columns {lookup.columns} != {LOOKUP_COLUMNS}", file=sys.stderr)
         sys.exit(2)
+    nulls = int(sum(lookup.null_count().row(0)))
+    if nulls:
+        print(f"category lookup has {nulls} null cells", file=sys.stderr)
+        sys.exit(2)
+    duplicated = lookup.filter(pl.col("leader").is_duplicated()).height
+    if duplicated:
+        print(f"category lookup has {duplicated} duplicated leaders", file=sys.stderr)
+        sys.exit(2)
     bad = lookup.filter(~pl.col("suggested_category").is_in(CATEGORY_LABELS)).height
     if bad:
         print(f"category lookup has {bad} rows with a label outside CATEGORY_LABELS", file=sys.stderr)
@@ -317,7 +364,7 @@ def load_lookup(path: Path, leaders: list[str]) -> pl.DataFrame:
         sys.exit(2)
     fact("lookup.missing", len(missing))
     fact("lookup.unused", len(have - set(leaders)))
-    return lookup.filter(pl.col("leader").is_in(leaders)).unique(subset="leader")
+    return lookup.filter(pl.col("leader").is_in(leaders))
 
 
 def build_mapping(values: pl.DataFrame, assigned: pl.DataFrame, lookup: pl.DataFrame) -> pl.DataFrame:
@@ -327,6 +374,10 @@ def build_mapping(values: pl.DataFrame, assigned: pl.DataFrame, lookup: pl.DataF
         .join(lookup.rename({"leader": "proposed_standard"}), on="proposed_standard", how="left")
         .with_columns(
             (pl.col("cluster_id").is_not_null() & (pl.col("cluster_id") <= TOP_K)).alias("in_review"),
+            # D-10, D-19: the category comes from the leader when the value is not the leader itself.
+            (pl.col("suggested_category").is_not_null() & (pl.col("value") != pl.col("proposed_standard")))
+            .fill_null(False)
+            .alias("category_inherited"),
         )
         .select(MAPPING_COLUMNS)
         .sort(
@@ -381,6 +432,7 @@ def build_review(
         pl.col("confidence").min().alias("confidence_min"),
         pl.col("suggested_category").first(),
         pl.col("category_source").first(),
+        pl.col("category_inherited").any(),
     )
     spell = (
         raw_pooled.join(in_review.select("value", "cluster_id"), on="value")
@@ -412,6 +464,7 @@ def build_review(
             "examples_n",
             "suggested_category",
             "category_source",
+            "category_inherited",
             "decision",
             "comment",
         )
@@ -419,13 +472,34 @@ def build_review(
     )
 
 
+RISKY_START = r"^[=+\-@\t\r]"  # a spreadsheet may read such a cell as a formula (D-19, WR-03)
+
+
+def csv_safe(frame: pl.DataFrame) -> pl.DataFrame:
+    """CSV copy only: prefix a single quote to String cells that start with = + - @ tab or CR."""
+    return frame.with_columns(
+        [
+            pl.when(pl.col(c).str.contains(RISKY_START))
+            .then(pl.concat_str(pl.lit("'"), pl.col(c)))
+            .otherwise(pl.col(c))
+            .alias(c)
+            for c, dtype in frame.schema.items()
+            if dtype == pl.String
+        ]
+    )
+
+
 def write_csv_bom(frame: pl.DataFrame, target: Path) -> None:
-    """Write a semicolon-separated UTF-8 CSV with BOM via temp file and rename (HARM-04)."""
+    """Write a semicolon-separated UTF-8 CSV with BOM via temp file and rename (HARM-04).
+
+    Cells are escaped in memory (csv_safe) before the temp-file write; the parquet copy is
+    written from the unescaped frame by write_outputs.
+    """
     assert_local_only(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = _tmp_path(target)
     try:
-        tmp.write_bytes(CSV_BOM + frame.write_csv(separator=CSV_SEPARATOR).encode("utf-8"))
+        tmp.write_bytes(CSV_BOM + csv_safe(frame).write_csv(separator=CSV_SEPARATOR).encode("utf-8"))
         tmp.replace(target)
     except BaseException:
         tmp.unlink(missing_ok=True)
@@ -455,11 +529,26 @@ def check_lookup(path: Path, report, review: pl.DataFrame) -> None:
         return
     lk = pl.read_parquet(path)
     report(lk.columns == LOOKUP_COLUMNS, "lookup_columns", f"cols={lk.width}")
-    report(lk["suggested_category"].is_in(CATEGORY_LABELS).all(), "lookup_labels_in_vocabulary")
-    report(lk["category_source"].eq(CATEGORY_SOURCE).all(), "lookup_category_source")
-    covered = set(lk["leader"].to_list())
-    missing = [ldr for ldr in review["proposed_standard"].to_list() if ldr not in covered]
-    report(not missing, "lookup_covers_review_leaders", f"missing={len(missing)}")
+    nulls = int(sum(lk.null_count().row(0)))
+    report(nulls == 0, "lookup_no_nulls", f"nulls={nulls}")
+    duplicated = lk.filter(pl.col("leader").is_duplicated()).height
+    report(duplicated == 0, "lookup_leaders_unique", f"duplicated={duplicated}")
+    report(
+        bool(lk["suggested_category"].is_in(CATEGORY_LABELS).fill_null(False).all()),
+        "lookup_labels_in_vocabulary",
+    )
+    report(
+        bool(lk["category_source"].eq(CATEGORY_SOURCE).fill_null(False).all()),
+        "lookup_category_source",
+    )
+    have = set(lk["leader"].to_list())
+    wanted = set(review["proposed_standard"].to_list())
+    missing, unused = len(wanted - have), len(have - wanted)
+    report(
+        missing == 0 and unused == 0,
+        "lookup_leaders_equal_review_leaders",
+        f"missing={missing} unused={unused}",
+    )
 
 
 def check_outputs(lookup_path: Path) -> int:
@@ -507,6 +596,11 @@ def check_outputs(lookup_path: Path) -> int:
         ).item(),
         "n_total_is_year_sum",
     )
+    digit_violations = sum(
+        digit_runs(v) != digit_runs(ldr)
+        for v, ldr in zip(ct["value"].to_list(), ct["proposed_standard"].to_list(), strict=True)
+    )
+    report(digit_violations == 0, "digit_runs_match_leader", f"violations={digit_violations}")
 
     r = pl.read_parquet(REVIEW_PATH)
     n_clusters = ct["cluster_id"].n_unique()
@@ -535,6 +629,28 @@ def check_outputs(lookup_path: Path) -> int:
         "category_source_llm_or_null",
     )
     report(r["suggested_category"].null_count() == 0, "review_suggestions_complete")
+    expected_inherited = a.select(
+        (pl.col("suggested_category").is_not_null() & (pl.col("value") != pl.col("proposed_standard")))
+        .fill_null(False)
+        .alias("e")
+    )["e"]
+    per_cluster_inherited = (
+        a.filter(pl.col("in_review"))
+        .group_by("cluster_id")
+        .agg(pl.col("category_inherited").any().alias("e"))
+    )
+    review_cmp = r.select("cluster_id", "category_inherited").join(
+        per_cluster_inherited, on="cluster_id", how="full", coalesce=True
+    )
+    report(
+        a["category_inherited"].null_count() == 0
+        and a["category_inherited"].equals(expected_inherited, check_names=False)
+        and r["category_inherited"].null_count() == 0
+        and review_cmp.height == r.height
+        and bool(review_cmp.select((pl.col("category_inherited") == pl.col("e")).all()).item()),
+        "category_inherited_consistent",
+        f"inherited_values={int(a['category_inherited'].sum())}",
+    )
     check_lookup(lookup_path, report, r)
 
     rec = pl.read_parquet(RECORDS_PATH)
@@ -564,6 +680,9 @@ def check_outputs(lookup_path: Path) -> int:
     for p in (REVIEW_CSV, RECORDS_CSV):
         with p.open("rb") as fh:
             report(fh.read(3) == CSV_BOM, f"{p.name}_bom")
+        cells = pl.read_csv(p, separator=CSV_SEPARATOR, infer_schema_length=0)
+        unsafe = sum(int(cells[c].drop_nulls().str.contains(RISKY_START).sum()) for c in cells.columns)
+        report(unsafe == 0, f"{p.name}_cells_safe", f"unsafe={unsafe}")
     report(
         all(inside_data_root(p) for p in (RECORDS_PATH, REVIEW_CSV, RECORDS_CSV)),
         "file_b_inside_data_root",
@@ -603,6 +722,7 @@ def main() -> int:
 
     assigned = cluster_values(values)
     report_coverage(values, assigned)
+    report_digit_guard(values)
     leaders = review_leaders(values, assigned)
     if args.write_leaders:
         assert_local_only(LEADERS_PATH)
@@ -617,6 +737,13 @@ def main() -> int:
     fact("category.labels_used", with_suggestion["suggested_category"].n_unique())
     fact("category.values", with_suggestion.height)
     fact("category.record_share", int(with_suggestion["n_total"].sum()) / content_records)
+    fact("category.inherited_values", int(mapping["category_inherited"].sum()))
+    for label in CATEGORY_LABELS:
+        fact(f"category.leaders.{label}", lookup.filter(pl.col("suggested_category") == label).height)
+        fact(
+            f"category.records.{label}",
+            int(with_suggestion.filter(pl.col("suggested_category") == label)["n_total"].sum()),
+        )
     review_values = assigned.filter(pl.col("cluster_id") <= TOP_K).select(
         "value", "cluster_id", "proposed_standard"
     )
