@@ -3,7 +3,53 @@
 Task 1: explore and prepare the `handicaps` census variable for standardisation.
 Task 2: design and implement a simple method to link the 1846 and 1850 Danish West Indies censuses.
 
-(Phase 4 completes this README. Currently: setup, data sources and the prepare step.)
+## Start here
+
+- [`task1_handicaps/README.md`](task1_handicaps/README.md): Task 1, from the EDA findings to the outputs, decisions, conclusions and next steps.
+- [`task2_linking/README.md`](task2_linking/README.md): Task 2, the linking design.
+- [`task1_handicaps/eda.ipynb`](task1_handicaps/eda.ipynb) and [`task2_linking/eda.ipynb`](task2_linking/eda.ipynb): the exploration behind each task, saved with their outputs.
+- `data/outputs/task1/`: File B, the Task 1 review files for the historians. They hold whole census records, so they are never committed and travel only inside the hand-in zip.
+- [`QUESTIONS.md`](QUESTIONS.md): my questions about the sources.
+
+Delivery: this repository as a zip of its working tree, with the git history and `data/outputs/`, but without `data/raw/` and `data/parquet/`.
+
+Task 1 is implemented. Task 2 is designed but not implemented: I ran out of time, so its README is a design note built on the EDA, and there is no linking script or links file.
+
+Nothing has to run just to read the results: the zip already holds File A, File B and both notebooks with their outputs. To rebuild everything, put the source files in place (see "Data (not in git)") and run:
+
+```bash
+uv sync
+uv run python scripts/prepare_data.py
+uv run python scripts/prepare_data.py --check
+uv run python task1_handicaps/harmonise.py
+uv run python task1_handicaps/harmonise.py --check
+```
+
+## Time spent and AI use
+
+About 3.5 hours of my own time; Claude Code agents did further work in the background while I was away.
+
+The work was done with Claude Code (GSD planning workflow); every plan, decision, review and verification report is kept in [`.planning/`](.planning/).
+
+## What is where
+
+```text
+README.md                  this file
+QUESTIONS.md               questions about the sources
+pyproject.toml, uv.lock    pinned environment, with .python-version
+scripts/                   prepare_data.py (source files to parquet), project_paths.py
+                           (where the data lives), check_notebook_outputs.py (output scanner)
+task1_handicaps/           Task 1: README.md, eda.ipynb, harmonise.py and
+                           category_suggestions.parquet (the LLM category lookup)
+task1_handicaps/outputs/   File A, handicaps_mapping.parquet (value-level, committed)
+task2_linking/             Task 2: README.md (design note) and eda.ipynb
+.planning/                 plans, decisions, reviews and verification reports
+.githooks/                 pre-commit data guard (see "Data governance")
+.claude/CLAUDE.md          Claude Code project instructions
+data/                      gitignored, never committed
+  outputs/task1/           File B, whole census records (in the zip only)
+  raw/, parquet/           source files and converted data (not in the zip)
+```
 
 ## Setup
 
@@ -34,6 +80,15 @@ share it). Set `LINKING_LAB_DATA=/absolute/path/to/data` to override. The resolv
 paths are defined once in `scripts/project_paths.py`
 (`uv run python scripts/project_paths.py parquet` prints the parquet directory).
 
+The unzipped hand-in carries its `.git`, so `scripts/project_paths.py` resolves the data
+directory to the `data/` folder next to this README (`LINKING_LAB_DATA` still overrides
+it). In the zip that folder holds `data/outputs/` but not `data/raw/` or `data/parquet/`.
+Create the raw-data folders and copy the source files in as listed in the table above:
+
+```bash
+mkdir -p data/raw/digidata_14001 data/raw/linking_lab
+```
+
 ## Prepare data
 
 ```bash
@@ -57,12 +112,40 @@ extracted to `data/raw/digidata_14001/Link_Lives Release 2 Guide (2025).pdf`.
 Writes are atomic (temp file renamed into place), so an interrupted run never leaves
 a partial parquet at a final path.
 
+## Reproduce Task 1
+
+The zip already holds both Task 1 outputs, so no run is needed just to see them. To
+reproduce them, convert the census files (`uv run python scripts/prepare_data.py --only census`
+is enough for Task 1) and run:
+
+```bash
+uv run python task1_handicaps/harmonise.py          # write File A and File B
+uv run python task1_handicaps/harmonise.py --check  # validate both, write nothing
+```
+
+- File A, `task1_handicaps/outputs/handicaps_mapping.parquet`, is committed. The run
+  rewrites it in place, so `git status --short task1_handicaps/outputs/` prints nothing
+  if the run reproduced the committed file.
+- File B is `handicaps_review` and `handicaps_review_records` under `data/outputs/task1/`,
+  each as parquet and as a CSV copy for the historians. It holds whole census records,
+  so it is never committed and reaches you only inside the zip. The run writes it again
+  in the same place and replaces the copy from the zip, so copy the review files
+  elsewhere before anyone fills in `decision` and `comment`.
+- The script exits with status 2 if a census parquet file is missing. `--check` reads
+  only File A, File B and the category lookup, so it also runs straight after unzipping,
+  before any data is prepared.
+- The other options (`--write-leaders`, `--lookup`), every column and the findings are in
+  [`task1_handicaps/README.md`](task1_handicaps/README.md).
+
+Task 2 has no script to run. Its EDA notebook re-renders as described in "EDA notebooks".
+
 ## Data governance
 
 Never enters git: raw source files, the converted parquet files, and any record-level
 output (rows with names, ages, owners, households or `pa_id` values). Committed
 outputs are aggregates only (value-frequency tables, summary statistics, plots), or
-`pa_id` plus aggregates.
+`pa_id` plus aggregates. One known exception: the rare free-text values in File A
+(code review CR-01, deferred), described under "Outputs" in `task1_handicaps/README.md`.
 
 Notebooks are committed with outputs (D-02), so their outputs must show aggregates
 only. Two guards back this up:
@@ -91,7 +174,7 @@ python3 -I scripts/check_notebook_outputs.py --self-test
 - `task1_handicaps/eda.ipynb`: Task 1, exploration of the `handicaps` variable across the census years.
 - `task2_linking/eda.ipynb`: Task 2, exploration of the 1846 and 1850 Danish West Indies censuses ahead of linking.
 
-Both are committed with their outputs (D-02), so GitHub renders them inline. The
+Both are committed with their outputs (D-02), so they can be read without re-running them. The
 outputs were reviewed by hand under the no-record-level rule (no name next to an age,
 owner, birthplace or household; no `pa_id` or record-number columns; no owner names;
 no name shown with a count below 5; no identifying free text) and pass
