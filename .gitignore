@@ -1,0 +1,17 @@
+# Data never goes into git (FamilySearch partner data, large Digidata release)
+data/
+*.xlsx
+*.zip
+*.csv
+# Recruitment documents received from Linking Lab - not ours to redistribute
+*.pdf
+
+# GSD tooling installed locally; only the project instruction file is tracked
+.claude/*
+!.claude/CLAUDE.md
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
