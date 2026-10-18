@@ -32,15 +32,15 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The rendered Task 2 EDA notebook shows the DWI column overview. It measures how stable the free/enslaved flag, owner fields, surnames and age are from 1846 to 1850.
   5. The EDA states the facts behind each open decision: Task 1 method, LLM-for-categories, embedding scope and blocking window width. The user can decide them from these facts. Phase 1 makes none of the decisions itself.
 
-**Plans**: 1/4 plans executed
+**Plans**: 3/4 plans executed
 
 Plans:
 **Wave 1**
 - [x] 01-01-PLAN.md — uv env, D-05 data layout, prepare_data.py (DWI xlsx + 5 census CSVs + Guide to all-String parquet), notebook-output scanner and pre-commit data guard (wave 1, package-legitimacy checkpoint)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 01-02-PLAN.md — Task 1 EDA notebook: handicaps per year, column overview, missingness by geography, normalisation preview, coverage curve, facts (wave 2)
-- [ ] 01-03-PLAN.md — Task 2 EDA notebook: DWI overview and casts, unique-name anchors and age noise, window-cost table, stability, households, facts (wave 2)
+- [x] 01-02-PLAN.md — Task 1 EDA notebook: handicaps per year, column overview, missingness by geography, normalisation preview, coverage curve, facts (wave 2)
+- [x] 01-03-PLAN.md — Task 2 EDA notebook: DWI overview and casts, unique-name anchors and age noise, window-cost table, stability, households, facts (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 01-04-PLAN.md — D-02 one-way-door gate: human review of rendered outputs, then commit notebooks with outputs (wave 3, blocking-human checkpoint)
@@ -101,7 +101,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Setup & EDA | 1/4 | In Progress | - |
+| 1. Setup & EDA | 3/4 | In Progress | - |
 | 2. Task 1 — Harmonization | 0/TBD | Not started | - |
 | 3. Task 2 — Linking | 0/TBD | Not started | - |
 | 4. Hand-in | 0/TBD | Not started | - |
