@@ -79,12 +79,35 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| SETUP-01 | Phase 1 | Pending |
+| SETUP-02 | Phase 1 | Pending |
+| SETUP-03 | Phase 1 | Pending |
+| EDA-01 | Phase 1 | Pending |
+| EDA-02 | Phase 1 | Pending |
+| EDA-03 | Phase 1 | Pending |
+| EDA-04 | Phase 1 | Pending |
+| HARM-01 | Phase 2 | Pending |
+| HARM-02 | Phase 2 | Pending |
+| HARM-03 | Phase 2 | Pending |
+| HARM-04 | Phase 2 | Pending |
+| HARM-05 | Phase 2 | Pending |
+| HARM-06 | Phase 2 | Pending |
+| LINK-01 | Phase 3 | Pending |
+| LINK-02 | Phase 3 | Pending |
+| LINK-03 | Phase 3 | Pending |
+| LINK-04 | Phase 3 | Pending |
+| LINK-05 | Phase 3 | Pending |
+| LINK-06 | Phase 3 | Pending |
+| LINK-07 | Phase 3 | Pending |
+| DOC-01 | Phase 4 | Pending |
+| DOC-02 | Phase 4 | Pending |
+| DOC-03 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 23 total
-- Mapped to phases: 0
-- Unmapped: 23 ⚠️
+- Mapped to phases: 23
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-18*
-*Last updated: 2026-10-18 after initial definition*
+*Last updated: 2026-10-18 after roadmap creation*

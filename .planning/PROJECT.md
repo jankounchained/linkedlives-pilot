@@ -69,7 +69,7 @@ Show sound, transparent, source-critical problem solving on realistic HisPeR dat
 ## Constraints
 
 - **Timeline:** ~3.5h of work, hard deadline 23:59 2026-10-18 — everything must be lean
-- **Data governance:** raw data and record-level outputs with names never in a public place; FamilySearch partner data is not ours to publish. Code lives in git; data doesn't.
+- **Data governance:** raw data and named record-level outputs never enter git — not even the private repo (licence may not allow it); FamilySearch partner data is not ours to publish. Code lives in git; data doesn't. Committed outputs: `pa_id` + aggregates only.
 - **Format:** parquet for all artifacts; CSV export only for historians; no Excel
 - **Tech stack:** Python via `uv` (system Python 3.14, no global packages); polars + pyarrow; rapidfuzz for string similarity
 - **Deliverable form:** scripts are the final product; notebooks are only for sharing EDA
@@ -97,6 +97,7 @@ Show sound, transparent, source-critical problem solving on realistic HisPeR dat
 | Task 2: household context in scope (second scoring pass after base linking works) | Strong signal; base result first protects against running out of time | — Pending |
 | Task 2 approach details beyond the above | Still open; finalise after EDA | — Pending |
 | Not scalable by design | 3-hour time box; scalable design is future work with more time | — Pending |
+| No named DWI record-level data in git — not even the private repo; committed outputs use `pa_id` + aggregates only; notebooks/samples showing names are rendered locally and gitignored | FamilySearch partner licence may not allow any redistribution; clarify with Olivia (candidate for QUESTIONS.md) | — Pending |
 
 ## Evolution
 
